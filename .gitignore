@@ -1,0 +1,6 @@
+*.o
+*.d
+*_app
+test_*
+.cache/
+compile_commands.json

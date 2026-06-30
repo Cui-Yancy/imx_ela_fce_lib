@@ -26,6 +26,7 @@ int main(int argc, char *argv[])
     struct aes_params params;
     uint8_t *key_buf     = NULL;
     uint8_t *iv_buf      = NULL;
+    uint8_t *aad_buf     = NULL;
     uint8_t *input_buf   = NULL;
     uint8_t *output_buf  = NULL;
     uint8_t gcm_tag[FCE_AES_GCM_TAG_SIZE];
@@ -36,6 +37,7 @@ int main(int argc, char *argv[])
     };
     size_t key_len   = 0;
     size_t iv_len    = 0;
+    size_t aad_len   = 0;
     size_t input_len = 0;
     int ret;
 
@@ -90,6 +92,18 @@ int main(int argc, char *argv[])
                     cli.mode == FCE_AES_CTR ? "CTR" : "GCM", iv_len);
     }
 
+    /* ---- Load AAD (GCM only) ---- */
+    if (cli.mode == FCE_AES_GCM && cli.aad_src) {
+        ret = load_key_or_iv(cli.aad_src, cli.aad_is_file,
+                             &aad_buf, &aad_len,
+                             0, 0);  /* any length accepted */
+        if (ret) {
+            fprintf(stderr, "Error: Failed to load AAD from '%s': %s\n",
+                    cli.aad_src, aes_strerror(ret));
+            goto out;
+        }
+    }
+
     /* ---- Read input file ---- */
     ret = read_binary_file(cli.input_path, &input_buf, &input_len);
     if (ret) {
@@ -127,8 +141,12 @@ int main(int argc, char *argv[])
     params.key_len   = key_len;
     params.iv        = iv_buf;
     params.iv_len    = iv_len;
-    params.aad       = (cli.mode == FCE_AES_GCM) ? default_aad : NULL;
-    params.aad_len   = (cli.mode == FCE_AES_GCM) ? sizeof(default_aad) : 0;
+    params.aad       = (cli.mode == FCE_AES_GCM)
+                            ? (aad_buf ? aad_buf : default_aad)
+                            : NULL;
+    params.aad_len   = (cli.mode == FCE_AES_GCM)
+                            ? (aad_buf ? aad_len : sizeof(default_aad))
+                            : 0;
     params.input     = input_buf;
     params.input_len = input_len;
     params.output    = output_buf;
@@ -166,6 +184,7 @@ int main(int argc, char *argv[])
 out:
     free(key_buf);
     free(iv_buf);
+    free(aad_buf);
     free(input_buf);
     free(output_buf);
     return ret ? 1 : 0;

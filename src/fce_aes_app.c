@@ -212,7 +212,7 @@ int main(int argc, char *argv[])
 
         ret = format_build_encrypt_output(cli.mode,
                                           iv_buf, iv_len,
-                                          output_buf, crypto_len,
+                                          output_buf, params.output_used,
                                           tag_ptr,
                                           &file_buf, &file_len);
         if (ret) {
@@ -225,7 +225,7 @@ int main(int argc, char *argv[])
         free(file_buf);
         file_buf = NULL;
     } else {
-        ret = write_binary_file(cli.output_path, output_buf, crypto_len);
+        ret = write_binary_file(cli.output_path, output_buf, params.output_used);
     }
 
     if (ret) {
@@ -236,7 +236,7 @@ int main(int argc, char *argv[])
 
     if (!cli.quiet && cli.output_path)
         printf("Wrote %zu bytes to '%s'.\n",
-               file_len ? file_len : crypto_len, cli.output_path);
+               file_len ? file_len : params.output_used, cli.output_path);
 
     /* ---- For GCM, display the authentication tag ---- */
     if (!cli.quiet && cli.mode == FCE_AES_GCM)

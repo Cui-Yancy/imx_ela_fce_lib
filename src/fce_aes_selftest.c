@@ -180,7 +180,12 @@ static int test_roundtrip(enum fce_aes_mode mode,
         goto out;
     }
 
-    /* ---- Decrypt ---- */
+    /* ---- Decrypt ----
+     *
+     * The ciphertext length comes from output_used (set by the
+     * encrypt step above).  For ECB/CBC this includes PKCS#7
+     * padding; for CTR/GCM it equals pt_len.
+     */
     memset(&dec_params, 0, sizeof(dec_params));
     dec_params.dir       = FCE_AES_DECRYPT;
     dec_params.mode      = mode;
@@ -191,7 +196,7 @@ static int test_roundtrip(enum fce_aes_mode mode,
     dec_params.aad       = aad;
     dec_params.aad_len   = aad_len;
     dec_params.input     = ciphertext;
-    dec_params.input_len = pt_len;
+    dec_params.input_len = enc_params.output_used;
     dec_params.output    = decrypted;
     dec_params.output_len = output_sz;
     dec_params.tag       = dec_tag;
@@ -291,6 +296,8 @@ static int test_cross(enum fce_aes_mode mode,
     struct aes_params params;
     int ret = -1;
     size_t output_sz;
+    size_t prime_ct_len;
+    size_t openssl_ct_len;
 
     output_sz = pt_len + 16;  /* extra space for potential tag */
 
@@ -325,6 +332,7 @@ static int test_cross(enum fce_aes_mode mode,
                mode_name, aes_strerror(ret));
         goto out;
     }
+    prime_ct_len = params.output_used;
 
     /* ---- 2. OpenSSL encrypt ---- */
     memset(&params, 0, sizeof(params));
@@ -349,9 +357,15 @@ static int test_cross(enum fce_aes_mode mode,
                mode_name, aes_strerror(ret));
         goto out;
     }
+    openssl_ct_len = params.output_used;
 
-    /* ---- 3. Compare ciphertexts ---- */
-    if (memcmp(prime_ct, openssl_ct, pt_len) != 0) {
+    /* ---- 3. Compare ciphertexts ----
+     *
+     * Both backends use PKCS#7 padding for ECB/CBC, so the ciphertext
+     * lengths should match.  Verify the full padded output.
+     */
+    if (prime_ct_len != openssl_ct_len ||
+        memcmp(prime_ct, openssl_ct, prime_ct_len) != 0) {
         printf("  %s cross: ciphertext mismatch\n", mode_name);
         ret = -1;
         goto out;
@@ -377,7 +391,7 @@ static int test_cross(enum fce_aes_mode mode,
     params.aad       = aad;
     params.aad_len   = aad_len;
     params.input     = prime_ct;
-    params.input_len = pt_len;
+    params.input_len = prime_ct_len;
     params.output    = dec_by_openssl;
     params.output_len = output_sz;
     params.tag       = prime_tag;
@@ -407,7 +421,7 @@ static int test_cross(enum fce_aes_mode mode,
     params.aad       = aad;
     params.aad_len   = aad_len;
     params.input     = openssl_ct;
-    params.input_len = pt_len;
+    params.input_len = openssl_ct_len;
     params.output    = dec_by_prime;
     params.output_len = output_sz;
     params.tag       = openssl_tag;

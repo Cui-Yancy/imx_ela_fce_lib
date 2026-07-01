@@ -17,9 +17,8 @@
  * Key sizes:       16, 24, 32 bytes
  *
  * Padding:
- *   ECB and CBC are run WITHOUT PKCS#7 padding to match the PRIME
- *   firmware behaviour — input must be a multiple of the AES block
- *   size (16 bytes).
+ *   ECB and CBC use PKCS#7 padding (OpenSSL default) to match the
+ *   PRIME backend behaviour — any plaintext length is accepted.
  *
  * CTR IV:
  *   CTR mode uses a 16-byte counter block (IV).  When a 12-byte nonce

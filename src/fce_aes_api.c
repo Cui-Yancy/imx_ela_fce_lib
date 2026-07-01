@@ -235,10 +235,26 @@ int aes_session_crypto(struct aes_session *sess, struct aes_params *params)
     if (params->output_len < params->input_len)
         return -ENOSPC;
 
+    /* ---- Determine shared-buffer data length (includes PKCS#7 padding) ----
+     *
+     * For ECB and CBC on encrypt we pad the plaintext to a multiple of the
+     * AES block size (16 bytes) using PKCS#7.  The PRIME hardware always
+     * processes full blocks, so we must present block-aligned data.
+     *
+     * For decrypt the ciphertext is already block-aligned (it was padded
+     * during encryption).  CTR and GCM do not use padding.
+     */
+    uint32_t buf_data_len = (uint32_t)params->input_len;
+
+    if ((params->mode == FCE_AES_ECB || params->mode == FCE_AES_CBC) &&
+        params->dir == FCE_AES_ENCRYPT) {
+        buf_data_len = (uint32_t)((params->input_len + 16) & ~(size_t)15);
+    }
+
     /* ---- calculate shared-buffer layout ----
      *
      * Cipher modes (ECB, CBC, CTR):
-     *   [data: input_len bytes]
+     *   [data: buf_data_len bytes]
      *   [padding to 64-byte boundary]
      *   [status: 4 bytes]
      *
@@ -256,13 +272,17 @@ int aes_session_crypto(struct aes_session *sess, struct aes_params *params)
         total_needed  = status_offset + sizeof(status_buf_t);
     } else {
         /* Cipher modes: data + padding + status */
-        status_offset = ALIGN_UP(params->input_len, 64);
+        status_offset = ALIGN_UP(buf_data_len, 64);
         total_needed  = status_offset + sizeof(status_buf_t);
     }
 
     /* Safety check: does it fit in our shared buffer? */
     if (total_needed > FCE_AES_SHARED_BUF_SIZE)
         return -EFBIG;
+
+    /* Check output buffer capacity: need room for padded data. */
+    if (params->output_len < buf_data_len)
+        return -ENOSPC;
 
     /* ---- populate crypto_op_args_t ---- */
     memset(&op, 0, sizeof(op));
@@ -273,10 +293,23 @@ int aes_session_crypto(struct aes_session *sess, struct aes_params *params)
     /* Copy the input data into the shared buffer. */
     memcpy(data_buf, params->input, params->input_len);
 
+    /* PKCS#7 padding for ECB/CBC encrypt.
+     *
+     * If the plaintext length is already a multiple of the block size
+     * we add a full padding block (16 bytes of 0x10).  This guarantees
+     * that the decrypt path can unambiguously strip the padding.
+     */
+    if ((params->mode == FCE_AES_ECB || params->mode == FCE_AES_CBC) &&
+        params->dir == FCE_AES_ENCRYPT) {
+        uint32_t pad_len = buf_data_len - (uint32_t)params->input_len;
+        uint8_t  pad_val = (uint8_t)pad_len;
+        memset(data_buf + params->input_len, pad_val, pad_len);
+    }
+
     /* Source and destination are the same buffer (in-place). */
     op.src.virt_addr = data_buf;
     op.src.phys_addr = sess->shmem_pa;
-    op.src.len       = (uint32_t)params->input_len;
+    op.src.len       = buf_data_len;
     op.dst           = op.src;
 
     /* ---- status buffer ---- */
@@ -336,6 +369,9 @@ int aes_session_crypto(struct aes_session *sess, struct aes_params *params)
                                         (uint64_t)(tag_buf - data_buf);
         op.op_aead_args.tag.len       = FCE_AES_GCM_TAG_SIZE;
 
+        /* GCM preserves output size; no padding needed. */
+        params->output_used = params->input_len;
+
     } else {
         /* ---- Cipher operation (ECB, CBC, CTR) ---- */
         op.op_type = CRYPTO_OP_TYPE_AES;
@@ -362,10 +398,14 @@ int aes_session_crypto(struct aes_session *sess, struct aes_params *params)
                                             CRYPTO_CIPHER_OP_DECRYPT);
         op.op_aes_args.iv      = (uint8_t *)params->iv;
         op.op_aes_args.ivlen   = (uint16_t)params->iv_len;
+
+        /* CTR does not use padding; output size equals input. */
+        if (params->mode == FCE_AES_CTR)
+            params->output_used = params->input_len;
     }
 
     /* ---- cache-clean input data before DMA ---- */
-    data_cache_clean(data_buf, (uint32_t)params->input_len, 1);
+    data_cache_clean(data_buf, buf_data_len, 1);
 
     /* ---- submit to PRIME hardware ---- */
     ops_ptr = &op;
@@ -378,10 +418,44 @@ int aes_session_crypto(struct aes_session *sess, struct aes_params *params)
     }
 
     /* ---- cache-clean-and-invalidate output after DMA ---- */
-    data_cache_clean(data_buf, (uint32_t)params->input_len, 0);
+    data_cache_clean(data_buf, buf_data_len, 0);
 
-    /* ---- copy result back to caller ---- */
-    memcpy(params->output, data_buf, params->input_len);
+    /* ---- copy result back to caller, stripping padding for ECB/CBC decrypt ---- */
+    if ((params->mode == FCE_AES_ECB || params->mode == FCE_AES_CBC) &&
+        params->dir == FCE_AES_DECRYPT) {
+        /* Strip PKCS#7 padding.
+         *
+         * The last byte of the decrypted data is the padding value
+         * (range 1–16).  Verify that all <pad_val> trailing bytes
+         * equal <pad_val>, then exclude them from the output.
+         */
+        uint8_t  pad_val = data_buf[buf_data_len - 1];
+        uint32_t pad_len = (uint32_t)pad_val;
+
+        if (pad_len > 0 && pad_len <= 16 && pad_len <= buf_data_len) {
+            uint32_t i;
+            uint8_t  padding_ok = 1;
+            for (i = buf_data_len - pad_len; i < buf_data_len; i++) {
+                if (data_buf[i] != pad_val) {
+                    padding_ok = 0;
+                    break;
+                }
+            }
+            if (padding_ok) {
+                buf_data_len -= pad_len;
+            }
+            /* If padding is invalid (should not happen with valid
+             * ciphertext), leave buf_data_len unchanged so the caller
+             * still gets all the decrypted bytes. */
+        }
+
+        memcpy(params->output, data_buf, buf_data_len);
+        params->output_used = buf_data_len;
+
+    } else {
+        memcpy(params->output, data_buf, buf_data_len);
+        params->output_used = buf_data_len;
+    }
 
     if (params->mode == FCE_AES_GCM) {
         data_cache_clean(tag_buf, FCE_AES_GCM_TAG_SIZE, 0);

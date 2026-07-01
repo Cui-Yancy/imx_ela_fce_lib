@@ -97,6 +97,14 @@ enum fce_aes_dir {
  * For GCM decryption the caller should supply the expected tag via @tag
  * so that the authentication result can be checked after the operation
  * completes.
+ *
+ * Padding:
+ *   ECB and CBC use PKCS#7 padding (always at least 1 byte).  After a
+ *   successful operation @a output_used contains the actual number of
+ *   bytes written to @a output:
+ *     - Encrypt: (input_len / 16 + 1) * 16  (ciphertext with padding)
+ *     - Decrypt: input_len - pad_len        (plaintext after stripping)
+ *   CTR and GCM do not use padding; @a output_used equals @a input_len.
  */
 struct aes_params {
     /** Encrypt or decrypt. */
@@ -121,6 +129,7 @@ struct aes_params {
     size_t            input_len;   /**< Input length in bytes. */
     uint8_t          *output;      /**< Output buffer (caller-allocated). */
     size_t            output_len;  /**< Output buffer capacity. */
+    size_t            output_used; /**< Actual bytes written to @a output (set by callee). */
 
     /* ---- GCM only: authentication tag ---- */
     uint8_t          *tag;         /**< Authentication tag (16 bytes for GCM). */

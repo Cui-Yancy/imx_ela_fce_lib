@@ -6,6 +6,8 @@ using the **PRIME** cryptographic hardware engine on NXP i.MX943 processors.
 ## Features
 
 - **AES cipher modes**: ECB, CBC, CTR (128/192/256-bit keys)
+- **PKCS#7 padding**: ECB and CBC automatically pad to the AES block size
+  (16 bytes) on encrypt and strip on decrypt
 - **AEAD mode**: GCM with authentication tag support
 - **Two API tiers**:
   - One-shot `aes_operation()` for convenience
@@ -119,6 +121,10 @@ hardware results against the OpenSSL software backend.
 | CTR  | `[16-byte IV][ciphertext]` |
 | GCM  | `[12-byte IV][ciphertext][16-byte tag]` |
 
+> **Note:** ECB and CBC use PKCS#7 padding.  The ciphertext written to
+> the output file is padded to a multiple of 16 bytes and is therefore
+> always larger than the original plaintext (by 1–16 bytes).
+
 This means the IV (and GCM tag) travel with the encrypted data, so you only
 need to supply the key when decrypting (see below).
 
@@ -213,6 +219,12 @@ struct aes_params params = {
 };
 
 int ret = aes_operation(&params);
+
+/* After the operation, output_used contains the actual number of
+ * bytes written to ciphertext.  For ECB/CBC encrypt this is the
+ * padded ciphertext size (>= sizeof(plaintext)).  For decrypt
+ * it is the plaintext size after stripping padding. */
+size_t ct_len = params.output_used;
 ```
 
 For repeated operations, use the session-based API:
@@ -244,9 +256,17 @@ aes_session_close(&sess);
   required.
 - GCM uses a built-in default AAD ("NXP-iMX9-AES-GCM", 16 bytes).
 - Maximum input data size per operation: 256 KiB.
+- **PKCS#7 padding** (ECB and CBC):
+  - Encrypt pads the plaintext to a multiple of 16 bytes using PKCS#7
+    padding (always at least 1 byte; block-aligned data gets a full
+    16-byte padding block).  The output file is therefore always larger
+    than the input for ECB/CBC.
+  - Decrypt automatically strips the padding.  On authentication failure
+    (invalid padding) the decrypted data is still returned but the
+    padding is not stripped — callers should check `output_used` for the
+    actual plaintext length.
 - **OpenSSL backend** (`-s`):
-  - ECB and CBC run WITHOUT PKCS#7 padding to match the PRIME engine
-    behaviour — input must be a multiple of 16 bytes.
+  - ECB and CBC use PKCS#7 padding (same as the PRIME backend).
   - CTR mode uses a 16-byte counter block (IV).  When a 12-byte nonce is
     provided it is padded to 16 bytes as `[nonce || 0x00000001]` (NIST SP
     800-38A initial counter value = 1).

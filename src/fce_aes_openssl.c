@@ -7,8 +7,11 @@
  * Implements aes_openssl_operation() using the OpenSSL EVP API for all
  * four modes (ECB, CBC, CTR, GCM) and all three key sizes (128/192/256).
  *
- * Padding is disabled for ECB and CBC to match the PRIME hardware
- * behaviour (caller must ensure block-aligned input).
+ * Padding:
+ *   ECB and CBC use PKCS#7 padding (OpenSSL default).  The encrypt path
+ *   produces a ciphertext that is always a multiple of the AES block size
+ *   (16 bytes) and at least one block.  The decrypt path strips the padding
+ *   automatically, returning the original plaintext.
  *
  * CTR mode uses a 16-byte counter block (IV).  When a 12-byte nonce is
  * provided it is padded to 16 bytes as [nonce || 0x00000001]
@@ -141,14 +144,13 @@ int aes_openssl_operation(struct aes_params *params)
         return -EIO;
     }
 
-    /* ---- Disable PKCS#7 padding for ECB and CBC ----
+    /* ---- ECB and CBC: PKCS#7 padding is enabled by default.
      *
-     * The PRIME hardware does not add or remove padding; the caller
-     * must supply block-aligned data.  OpenSSL enables PKCS#7 padding
-     * by default, which would produce different ciphertext.
+     * OpenSSL enables PKCS#7 padding by default, which matches our
+     * PRIME backend's software padding.  The encrypt path pads the
+     * plaintext to a multiple of 16 bytes; the decrypt path strips
+     * the padding automatically.
      */
-    if (params->mode == FCE_AES_ECB || params->mode == FCE_AES_CBC)
-        EVP_CIPHER_CTX_set_padding(ctx, 0);
 
     /* ---- GCM: process AAD and (for decrypt) set expected tag ---- */
     if (params->mode == FCE_AES_GCM) {
@@ -222,5 +224,10 @@ int aes_openssl_operation(struct aes_params *params)
     }
 
     EVP_CIPHER_CTX_free(ctx);
+
+    /* Report the actual number of bytes written to the output buffer.
+     * For ECB/CBC this includes the PKCS#7 padding (encrypt) or
+     * excludes it (decrypt).  For CTR/GCM it equals input_len. */
+    params->output_used = (size_t)(outlen + tmplen);
     return 0;
 }

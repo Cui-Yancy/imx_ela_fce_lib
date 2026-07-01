@@ -6,7 +6,9 @@
  *
  * Runs known-answer tests for all four supported AES modes (ECB, CBC, CTR,
  * GCM) using AES-256.  Each test performs an encrypt / decrypt round-trip
- * and verifies the result.
+ * and verifies the result, plus a cross-verify that compares the PRIME
+ * hardware backend against the OpenSSL software backend (cross-decrypt,
+ * ciphertext comparison, and GCM tag comparison).
  */
 
 #ifndef FCE_AES_SELFTEST_H
@@ -26,6 +28,9 @@ extern "C" {
  *   3. Verifies that the decrypted text matches the original plaintext.
  *   4. For GCM, also verifies that the authentication tag is non-zero
  *      and that decryption with the correct tag succeeds.
+ *   5. Cross-verifies that the PRIME and OpenSSL backends produce
+ *      identical results (ciphertext comparison, cross-decrypt, and
+ *      GCM tag comparison).
  *
  * @return 0 if all tests pass, or a negative errno value if any fail.
  */

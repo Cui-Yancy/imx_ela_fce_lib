@@ -8,7 +8,10 @@
  * consistency with the platform's validated test cases.
  *
  * For each AES mode the test performs:
- *   encrypt → decrypt → compare plaintext (round-trip)
+ *   encrypt → decrypt → compare plaintext (round-trip),
+ *   plus a cross-verify that compares the PRIME hardware backend against
+ *   the OpenSSL software backend (cross-decrypt, ciphertext comparison,
+ *   and GCM tag comparison).
  *
  * GCM additionally verifies that the authentication tag is correct
  * (encrypt produces a tag; decrypt verifies it).
@@ -16,6 +19,7 @@
 
 #include "fce_aes_selftest.h"
 #include "fce_aes_api.h"
+#include "fce_aes_openssl.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -243,6 +247,197 @@ out:
 }
 
 /* ======================================================================
+ * Cross-verify: PRIME vs OpenSSL
+ * ====================================================================== */
+
+/**
+ * test_cross — Cross-verify PRIME and OpenSSL backends produce identical
+ *              results.
+ *
+ * For each mode the function performs (in this order):
+ *   1. Encrypt with PRIME.
+ *   2. Encrypt with OpenSSL.
+ *   3. Compare the two ciphertexts (must be identical).
+ *   4. For GCM, also compare the authentication tags.
+ *   5. Decrypt the PRIME ciphertext with OpenSSL — must match original.
+ *   6. Decrypt the OpenSSL ciphertext with PRIME — must match original.
+ *
+ * @param mode        AES mode.
+ * @param mode_name   Human-readable label.
+ * @param key         Key bytes.
+ * @param key_len     Key length.
+ * @param iv          IV / nonce (may be NULL for ECB).
+ * @param iv_len      IV length.
+ * @param aad         Additional authenticated data (may be NULL).
+ * @param aad_len     AAD length.
+ * @param plaintext   Input plaintext.
+ * @param pt_len      Plaintext length.
+ *
+ * @return 0 on success, -1 on failure.
+ */
+static int test_cross(enum fce_aes_mode mode,
+                      const char *mode_name,
+                      const uint8_t *key, size_t key_len,
+                      const uint8_t *iv, size_t iv_len,
+                      const uint8_t *aad, size_t aad_len,
+                      const uint8_t *plaintext, size_t pt_len)
+{
+    uint8_t *prime_ct       = NULL;
+    uint8_t *openssl_ct     = NULL;
+    uint8_t *dec_by_openssl = NULL;
+    uint8_t *dec_by_prime   = NULL;
+    uint8_t  prime_tag[16]  = {0};
+    uint8_t  openssl_tag[16] = {0};
+    struct aes_params params;
+    int ret = -1;
+    size_t output_sz;
+
+    output_sz = pt_len + 16;  /* extra space for potential tag */
+
+    /* Allocate four independent output buffers */
+    prime_ct       = (uint8_t *)malloc(output_sz);
+    openssl_ct     = (uint8_t *)malloc(output_sz);
+    dec_by_openssl = (uint8_t *)malloc(output_sz);
+    dec_by_prime   = (uint8_t *)malloc(output_sz);
+    if (!prime_ct || !openssl_ct || !dec_by_openssl || !dec_by_prime)
+        goto out;
+
+    /* ---- 1. PRIME encrypt ---- */
+    memset(&params, 0, sizeof(params));
+    params.dir       = FCE_AES_ENCRYPT;
+    params.mode      = mode;
+    params.key       = key;
+    params.key_len   = key_len;
+    params.iv        = iv;
+    params.iv_len    = iv_len;
+    params.aad       = aad;
+    params.aad_len   = aad_len;
+    params.input     = plaintext;
+    params.input_len = pt_len;
+    params.output    = prime_ct;
+    params.output_len = output_sz;
+    params.tag       = prime_tag;
+    params.tag_len   = sizeof(prime_tag);
+
+    ret = aes_operation(&params);
+    if (ret) {
+        printf("  %s cross: PRIME encrypt FAILED (error: %s)\n",
+               mode_name, aes_strerror(ret));
+        goto out;
+    }
+
+    /* ---- 2. OpenSSL encrypt ---- */
+    memset(&params, 0, sizeof(params));
+    params.dir       = FCE_AES_ENCRYPT;
+    params.mode      = mode;
+    params.key       = key;
+    params.key_len   = key_len;
+    params.iv        = iv;
+    params.iv_len    = iv_len;
+    params.aad       = aad;
+    params.aad_len   = aad_len;
+    params.input     = plaintext;
+    params.input_len = pt_len;
+    params.output    = openssl_ct;
+    params.output_len = output_sz;
+    params.tag       = openssl_tag;
+    params.tag_len   = sizeof(openssl_tag);
+
+    ret = aes_openssl_operation(&params);
+    if (ret) {
+        printf("  %s cross: OpenSSL encrypt FAILED (error: %s)\n",
+               mode_name, aes_strerror(ret));
+        goto out;
+    }
+
+    /* ---- 3. Compare ciphertexts ---- */
+    if (memcmp(prime_ct, openssl_ct, pt_len) != 0) {
+        printf("  %s cross: ciphertext mismatch\n", mode_name);
+        ret = -1;
+        goto out;
+    }
+
+    /* ---- 4. For GCM, compare authentication tags ---- */
+    if (mode == FCE_AES_GCM) {
+        if (memcmp(prime_tag, openssl_tag, sizeof(prime_tag)) != 0) {
+            printf("  %s cross: GCM tag mismatch\n", mode_name);
+            ret = -1;
+            goto out;
+        }
+    }
+
+    /* ---- 5. OpenSSL decrypt of PRIME ciphertext ---- */
+    memset(&params, 0, sizeof(params));
+    params.dir       = FCE_AES_DECRYPT;
+    params.mode      = mode;
+    params.key       = key;
+    params.key_len   = key_len;
+    params.iv        = iv;
+    params.iv_len    = iv_len;
+    params.aad       = aad;
+    params.aad_len   = aad_len;
+    params.input     = prime_ct;
+    params.input_len = pt_len;
+    params.output    = dec_by_openssl;
+    params.output_len = output_sz;
+    params.tag       = prime_tag;
+    params.tag_len   = sizeof(prime_tag);
+
+    ret = aes_openssl_operation(&params);
+    if (ret) {
+        printf("  %s cross: PRIME→OpenSSL decrypt FAILED (error: %s)\n",
+               mode_name, aes_strerror(ret));
+        goto out;
+    }
+
+    if (memcmp(dec_by_openssl, plaintext, pt_len) != 0) {
+        printf("  %s cross: PRIME→OpenSSL data mismatch\n", mode_name);
+        ret = -1;
+        goto out;
+    }
+
+    /* ---- 6. PRIME decrypt of OpenSSL ciphertext ---- */
+    memset(&params, 0, sizeof(params));
+    params.dir       = FCE_AES_DECRYPT;
+    params.mode      = mode;
+    params.key       = key;
+    params.key_len   = key_len;
+    params.iv        = iv;
+    params.iv_len    = iv_len;
+    params.aad       = aad;
+    params.aad_len   = aad_len;
+    params.input     = openssl_ct;
+    params.input_len = pt_len;
+    params.output    = dec_by_prime;
+    params.output_len = output_sz;
+    params.tag       = openssl_tag;
+    params.tag_len   = sizeof(openssl_tag);
+
+    ret = aes_operation(&params);
+    if (ret) {
+        printf("  %s cross: OpenSSL→PRIME decrypt FAILED (error: %s)\n",
+               mode_name, aes_strerror(ret));
+        goto out;
+    }
+
+    if (memcmp(dec_by_prime, plaintext, pt_len) != 0) {
+        printf("  %s cross: OpenSSL→PRIME data mismatch\n", mode_name);
+        ret = -1;
+        goto out;
+    }
+
+    printf("  %s cross-verify: PASS\n", mode_name);
+    ret = 0;
+
+out:
+    free(prime_ct);
+    free(openssl_ct);
+    free(dec_by_openssl);
+    free(dec_by_prime);
+    return ret;
+}
+
+/* ======================================================================
  * Self-test runner
  * ====================================================================== */
 
@@ -253,7 +448,7 @@ int run_selftest(void)
 
     printf("\n");
     printf("============================================\n");
-    printf("  FCE AES PRIME Self-Test\n");
+    printf("  FCE AES PRIME Self-Test + OpenSSL Cross-Verify\n");
     printf("============================================\n");
     printf("\n");
 
@@ -265,12 +460,26 @@ int run_selftest(void)
                             test_plaintext, sizeof(test_plaintext));
     if (result) ret = result;
 
+    result = test_cross(FCE_AES_ECB, "AES-256-ECB",
+                        ecb_key, sizeof(ecb_key),
+                        NULL, 0,
+                        NULL, 0,
+                        test_plaintext, sizeof(test_plaintext));
+    if (result) ret = result;
+
     /* ---- CBC ---- */
     result = test_roundtrip(FCE_AES_CBC, "AES-256-CBC",
                             cbc_key, sizeof(cbc_key),
                             cbc_iv, sizeof(cbc_iv),
                             NULL, 0,
                             test_plaintext, sizeof(test_plaintext));
+    if (result) ret = result;
+
+    result = test_cross(FCE_AES_CBC, "AES-256-CBC",
+                        cbc_key, sizeof(cbc_key),
+                        cbc_iv, sizeof(cbc_iv),
+                        NULL, 0,
+                        test_plaintext, sizeof(test_plaintext));
     if (result) ret = result;
 
     /* ---- CTR ---- */
@@ -281,12 +490,26 @@ int run_selftest(void)
                             test_plaintext, sizeof(test_plaintext));
     if (result) ret = result;
 
+    result = test_cross(FCE_AES_CTR, "AES-256-CTR",
+                        ctr_key, sizeof(ctr_key),
+                        ctr_iv, sizeof(ctr_iv),
+                        NULL, 0,
+                        test_plaintext, sizeof(test_plaintext));
+    if (result) ret = result;
+
     /* ---- GCM ---- */
     result = test_roundtrip(FCE_AES_GCM, "AES-256-GCM",
                             gcm_key, sizeof(gcm_key),
                             gcm_iv, sizeof(gcm_iv),
                             gcm_aad, sizeof(gcm_aad),
                             test_plaintext, sizeof(test_plaintext));
+    if (result) ret = result;
+
+    result = test_cross(FCE_AES_GCM, "AES-256-GCM",
+                        gcm_key, sizeof(gcm_key),
+                        gcm_iv, sizeof(gcm_iv),
+                        gcm_aad, sizeof(gcm_aad),
+                        test_plaintext, sizeof(test_plaintext));
     if (result) ret = result;
 
     printf("\n");

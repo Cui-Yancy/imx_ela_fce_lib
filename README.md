@@ -14,6 +14,7 @@ using the **PRIME** cryptographic hardware engine on NXP i.MX943 processors.
 - **Dual backend**: PRIME hardware engine (default) or OpenSSL software crypto (`-s`)
 - **Cross-verification**: run the same key/IV/data through both backends to validate PRIME correctness
 - **Built-in self-test**: run with no arguments to verify all four modes
+  (round-trip + OpenSSL cross-verify)
 
 ## Directory Structure
 
@@ -24,6 +25,7 @@ fce_aes_app/
   include/          — Public API headers
     fce_aes_api.h       Core PRIME AES API
     fce_aes_cli.h       CLI argument parser
+    fce_aes_format.h    On-disk file format (IV/tag layout)
     fce_aes_io.h        I/O utilities
     fce_aes_openssl.h   OpenSSL software crypto backend
     fce_aes_selftest.h  Self-test runner
@@ -31,6 +33,7 @@ fce_aes_app/
     fce_aes_app.c       Main entry point
     fce_aes_api.c       PRIME AES engine wrapper (core API)
     fce_aes_cli.c       Command-line argument parsing (getopt)
+    fce_aes_format.c    On-disk file format (IV/tag layout)
     fce_aes_io.c        File and hex-string I/O utilities
     fce_aes_openssl.c   OpenSSL AES implementation (EVP API)
     fce_aes_selftest.c  Built-in test vectors and self-test runner
@@ -94,7 +97,8 @@ make DESTDIR=/path/to/rootfs install
 ```
 
 Runs encrypt/decrypt round-trip tests for all four modes (ECB, CBC, CTR,
-GCM) with built-in AES-256 test vectors.
+GCM) with built-in AES-256 test vectors, and cross-verifies the PRIME
+hardware results against the OpenSSL software backend.
 
 ### Encrypt a file
 
@@ -146,8 +150,13 @@ need to supply the key when decrypting (see below).
 
 ### Cross-verification: PRIME ↔ OpenSSL
 
-Use the `-s` flag to run the same operation through the OpenSSL software
-backend, then compare results with the PRIME hardware path:
+The built-in self-test (`./fce_aes_app` with no arguments) automatically
+cross-verifies all four modes across both backends: it encrypts with
+PRIME and decrypts with OpenSSL, encrypts with OpenSSL and decrypts with
+PRIME, and directly compares ciphertexts and GCM tags.
+
+For manual cross-verification, use the `-s` flag to run the same operation
+through the OpenSSL software backend, then compare results:
 
 ```bash
 # ECB is best for direct comparison (no IV — deterministic)

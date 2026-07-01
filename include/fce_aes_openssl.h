@@ -22,10 +22,9 @@
  *   size (16 bytes).
  *
  * CTR IV:
- *   The PRIME firmware uses a 12-byte nonce.  OpenSSL's AES-CTR
- *   expects a full 16-byte counter block.  This implementation pads
- *   the 12-byte nonce with [0x00,0x00,0x00,0x01] to form the counter
- *   block (standard NIST SP 800-38A initial counter value).
+ *   CTR mode uses a 16-byte counter block (IV).  When a 12-byte nonce
+ *   is provided it is padded to 16 bytes as [nonce || 0x00000001]
+ *   (standard NIST SP 800-38A initial counter value).
  */
 
 #ifndef FCE_AES_OPENSSL_H

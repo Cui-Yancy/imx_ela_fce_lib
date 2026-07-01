@@ -80,7 +80,7 @@ int format_generate_iv(enum fce_aes_mode mode,
  * File layout per mode:
  *   ECB:  [ciphertext]
  *   CBC:  [16-byte IV][ciphertext]
- *   CTR:  [12-byte IV][ciphertext]
+ *   CTR:  [16-byte IV][ciphertext]
  *   GCM:  [12-byte IV][ciphertext][16-byte tag]
  *
  * @param[in]  mode           AES mode.

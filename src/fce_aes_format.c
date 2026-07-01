@@ -10,7 +10,7 @@
  * The layout is mode-dependent:
  *   ECB:  [ciphertext]
  *   CBC:  [16-byte IV][ciphertext]
- *   CTR:  [12-byte IV][ciphertext]
+ *   CTR:  [16-byte IV][ciphertext]
  *   GCM:  [12-byte IV][ciphertext][16-byte tag]
  */
 
@@ -28,8 +28,8 @@
 size_t format_get_iv_length(enum fce_aes_mode mode)
 {
     switch (mode) {
-    case FCE_AES_CBC: return 16;
-    case FCE_AES_CTR:
+    case FCE_AES_CBC:
+    case FCE_AES_CTR: return 16;
     case FCE_AES_GCM: return 12;
     default:          return 0;
     }

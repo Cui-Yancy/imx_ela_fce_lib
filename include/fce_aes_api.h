@@ -20,7 +20,7 @@
  * All supported AES modes:
  *   - ECB  (Electronic Codebook)         — no IV required
  *   - CBC  (Cipher Block Chaining)       — 16-byte IV
- *   - CTR  (Counter)                     — 12-byte nonce/IV
+ *   - CTR  (Counter)                     — 16-byte counter block (IV)
  *   - GCM  (Galois/Counter Mode, AEAD)   — 12-byte nonce/IV, AAD, 16-byte tag
  *
  * Key sizes: 16 bytes (AES-128), 24 bytes (AES-192), 32 bytes (AES-256).
@@ -59,7 +59,7 @@ extern "C" {
 #define FCE_AES_192_KEY_SIZE           24
 #define FCE_AES_256_KEY_SIZE           32
 
-/** Maximum IV / nonce length (CBC uses 16, CTR/GCM use 12). */
+/** Maximum IV / nonce length (CBC/CTR use 16, GCM uses 12). */
 #define FCE_AES_MAX_IV_SIZE            16
 
 /** GCM authentication tag length (always 16 bytes for PRIME). */
@@ -110,7 +110,7 @@ struct aes_params {
 
     /* ---- IV / nonce ---- */
     const uint8_t    *iv;          /**< Initialization vector (NULL for ECB). */
-    size_t            iv_len;      /**< IV length (16 for CBC, 12 for CTR/GCM). */
+    size_t            iv_len;      /**< IV length (16 for CBC/CTR, 12 for GCM). */
 
     /* ---- GCM only: additional authenticated data ---- */
     const uint8_t    *aad;         /**< Additional authenticated data (may be NULL). */

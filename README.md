@@ -116,7 +116,7 @@ hardware results against the OpenSSL software backend.
 |------|--------|
 | ECB  | `[ciphertext]` |
 | CBC  | `[16-byte IV][ciphertext]` |
-| CTR  | `[12-byte IV][ciphertext]` |
+| CTR  | `[16-byte IV][ciphertext]` |
 | GCM  | `[12-byte IV][ciphertext][16-byte tag]` |
 
 This means the IV (and GCM tag) travel with the encrypted data, so you only
@@ -247,8 +247,9 @@ aes_session_close(&sess);
 - **OpenSSL backend** (`-s`):
   - ECB and CBC run WITHOUT PKCS#7 padding to match the PRIME engine
     behaviour — input must be a multiple of 16 bytes.
-  - CTR mode pads the 12-byte PRIME nonce to a 16-byte counter block as
-    `[nonce || 0x00000001]` (NIST SP 800-38A initial counter value = 1).
+  - CTR mode uses a 16-byte counter block (IV).  When a 12-byte nonce is
+    provided it is padded to 16 bytes as `[nonce || 0x00000001]` (NIST SP
+    800-38A initial counter value = 1).
   - GCM authentication tag verification is performed by OpenSSL on
     decrypt; a mismatch returns an error.
 

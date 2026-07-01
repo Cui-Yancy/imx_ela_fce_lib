@@ -114,7 +114,7 @@ int main(int argc, char *argv[])
      *
      *   ECB:   [ciphertext]
      *   CBC:   [16-byte IV][ciphertext]
-     *   CTR:   [12-byte IV][ciphertext]
+     *   CTR:   [16-byte IV][ciphertext]
      *   GCM:   [12-byte IV][ciphertext][16-byte tag]
      */
     if (cli.dir == FCE_AES_DECRYPT && cli.mode != FCE_AES_ECB && !iv_buf) {

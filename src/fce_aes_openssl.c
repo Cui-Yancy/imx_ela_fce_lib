@@ -10,8 +10,9 @@
  * Padding is disabled for ECB and CBC to match the PRIME hardware
  * behaviour (caller must ensure block-aligned input).
  *
- * CTR mode pads the 12-byte PRIME nonce to a 16-byte counter block as
- * [nonce || 0x00000001] (NIST SP 800-38A initial counter value = 1).
+ * CTR mode uses a 16-byte counter block (IV).  When a 12-byte nonce is
+ * provided it is padded to 16 bytes as [nonce || 0x00000001]
+ * (NIST SP 800-38A initial counter value = 1).
  */
 
 #include "fce_aes_openssl.h"
@@ -94,26 +95,33 @@ int aes_openssl_operation(struct aes_params *params)
     if (!cipher)
         return -EINVAL;
 
-    /* ---- CTR: pad 12-byte nonce to 16-byte counter block ----
+    /* ---- CTR: build 16-byte counter block ----
      *
-     * The PRIME firmware uses a 12-byte nonce/IV for CTR mode.
-     * OpenSSL's AES-CTR expects a full 16-byte counter block.
-     * We build it as [nonce || 0x00000001] per NIST SP 800-38A
-     * (the counter starts at 1 in the final 32-bit word, big-endian).
+     * The PRIME firmware expects a full 16-byte counter block for
+     * CTR mode.  OpenSSL's AES-CTR also expects a 16-byte IV.
+     *
+     * When the caller provides a 16-byte IV we use it directly as
+     * the initial counter block.  When a 12-byte nonce is provided we
+     * pad it with [0x00000001] per NIST SP 800-38A.
      */
     uint8_t ctr_iv[16];
     const uint8_t *iv = params->iv;
 
     if (params->mode == FCE_AES_CTR) {
-        if (!iv || params->iv_len < 12) {
-            /* PRIME always provides a 12-byte nonce; if not, fail. */
+        if (!iv || params->iv_len < 12)
             return -EINVAL;
+
+        if (params->iv_len >= 16) {
+            /* Full 16-byte counter block — use as-is. */
+            memcpy(ctr_iv, iv, 16);
+        } else {
+            /* 12-byte nonce — pad with initial counter = 1. */
+            memcpy(ctr_iv, iv, 12);
+            ctr_iv[12] = 0x00;
+            ctr_iv[13] = 0x00;
+            ctr_iv[14] = 0x00;
+            ctr_iv[15] = 0x01;
         }
-        memcpy(ctr_iv, iv, 12);
-        ctr_iv[12] = 0x00;
-        ctr_iv[13] = 0x00;
-        ctr_iv[14] = 0x00;
-        ctr_iv[15] = 0x01;
         iv = ctr_iv;
     }
 

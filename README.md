@@ -10,7 +10,7 @@ using the **PRIME** cryptographic hardware engine on NXP i.MX943 processors.
 - **Two API tiers**:
   - One-shot `aes_operation()` for convenience
   - Session-based API (`aes_session_*`) for efficient repeated operations
-- **Dual key/IV input**: hexadecimal strings or binary files
+- **Dual key input**: hexadecimal strings or binary files; IV auto-generated from /dev/urandom
 - **Built-in self-test**: run with no arguments to verify all four modes
 
 ## Directory Structure
@@ -95,15 +95,9 @@ GCM) with built-in AES-256 test vectors.
 ### Encrypt a file
 
 ```bash
-# With key as hex string
+# IV auto-generated from /dev/urandom
 ./fce_aes_app -e -m CBC \
     -k e2f7fef712ca2c685ad8e052925ab10587a4fcdf3feee3365249b3c2e51d79d7 \
-    -v 415e631116f530d2cda8e0364dbf67fb \
-    -i plaintext.bin -o ciphertext.bin
-
-# Or with key from binary file
-./fce_aes_app -e -m CTR \
-    -K keyfile.bin -V iv.bin \
     -i plaintext.bin -o ciphertext.bin
 ```
 
@@ -123,29 +117,24 @@ need to supply the key when decrypting (see below).
 ### Decrypt a file
 
 ```bash
-# IV is extracted from the input file (no -v / -V needed)
+# IV is extracted from the input file
 ./fce_aes_app -d -m CBC \
     -k e2f7fef712ca2c685ad8e052925ab10587a4fcdf3feee3365249b3c2e51d79d7 \
-    -i ciphertext.bin -o restored.bin
-
-# Or override the embedded IV manually
-./fce_aes_app -d -m CBC \
-    -k e2f7fef712ca2c685ad8e052925ab10587a4fcdf3feee3365249b3c2e51d79d7 \
-    -v 415e631116f530d2cda8e0364dbf67fb \
     -i ciphertext.bin -o restored.bin
 ```
 
 ### GCM encryption (with authentication tag)
 
 ```bash
+# IV auto-generated from /dev/urandom
 ./fce_aes_app -e -m GCM \
-    -k <64-hex-chars> -v <24-hex-chars> \
+    -k <64-hex-chars> \
     -i plaintext.bin -o ciphertext.bin
 
 # The authentication tag is printed to stdout and also embedded in the
 # output file.
 
-# Decrypt (tag extracted from input file, no -v needed):
+# Decrypt (tag and IV extracted from input file):
 ./fce_aes_app -d -m GCM \
     -k <64-hex-chars> \
     -i ciphertext.bin -o restored.bin
@@ -162,8 +151,6 @@ need to supply the key when decrypting (see below).
 | `-o <file>` | Output data file (binary; default: stdout) |
 | `-k <hex>` | AES key as hex string (32/48/64 hex chars) |
 | `-K <file>` | AES key from binary file (16/24/32 bytes) |
-| `-v <hex>` | IV/nonce as hex string (CBC: 32 hex, CTR/GCM: 24 hex; optional for decrypt) |
-| `-V <file>` | IV/nonce from binary file (optional for decrypt) |
 | `-h` | Show help |
 
 ## C API Example
@@ -211,14 +198,11 @@ aes_session_close(&sess);
   instructions.  No manual cache maintenance is needed by callers.
 - GCM encryption produces a 16-byte authentication tag.  The tag is
   embedded in the output file and automatically extracted on decrypt.
-- The IV (nonce) is embedded in the encrypted output file for CBC, CTR,
-  and GCM modes.  During decryption the IV is automatically extracted
-  from the input file, so you do not need to supply it via `-v`/`-V`
-  unless you want to override the embedded value.
-- **Encrypt and decrypt input parameters differ:** encryption always
-  requires the IV (`-v`/`-V`) because it must be known before writing the
-  output file.  Decryption reads the IV from the file and only needs the
-  key (and AAD for GCM if custom AAD was used).
+- The IV (nonce) is automatically generated from `/dev/urandom` during
+  encryption for CBC, CTR, and GCM modes.  The generated IV is printed
+  to stdout and embedded in the output file.  During decryption the IV
+  is extracted from the input file automatically, so only the key (and
+  AAD for GCM if custom AAD was used) is required.
 - Maximum input data size per operation: 256 KiB.
 
 ## License

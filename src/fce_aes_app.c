@@ -19,6 +19,41 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
+
+/* ======================================================================
+ * Random IV generation
+ * ====================================================================== */
+
+/**
+ * generate_random_iv — Fill a buffer with cryptographically random bytes
+ *                      from /dev/urandom.
+ *
+ * @param[out] buf  Buffer to fill.
+ * @param[in]  len  Number of bytes to read.
+ *
+ * @return 0 on success, or a negative errno value on failure.
+ */
+static int generate_random_iv(uint8_t *buf, size_t len)
+{
+    FILE *urandom;
+    size_t nread;
+
+    if (!buf || len == 0)
+        return -EINVAL;
+
+    urandom = fopen("/dev/urandom", "rb");
+    if (!urandom)
+        return -errno;
+
+    nread = fread(buf, 1, len, urandom);
+    fclose(urandom);
+
+    if (nread != len)
+        return -EIO;
+
+    return 0;
+}
 
 int main(int argc, char *argv[])
 {
@@ -70,44 +105,38 @@ int main(int argc, char *argv[])
         goto out;
     }
 
-    /* ---- Load IV (if required by mode) ----
+    /* ---- Generate IV (if required by mode) ----
      *
-     * Encryption: IV is mandatory (ECB excluded).
-     * Decryption: IV is optional — if not provided here it will be
-     *             extracted from the input file below.
+     * For non-ECB modes, the IV is either:
+     *   - Encrypt: auto-generated from /dev/urandom
+     *   - Decrypt: extracted from the input file below
      */
     if (cli.mode != FCE_AES_ECB) {
-        size_t expected_iv_max = FCE_AES_MAX_IV_SIZE;
+        if (cli.dir == FCE_AES_ENCRYPT) {
+            size_t gen_len = (cli.mode == FCE_AES_CBC) ? 16 : 12;
 
-        if (cli.iv_src) {
-            ret = load_key_or_iv(cli.iv_src, cli.iv_is_file,
-                                 &iv_buf, &iv_len,
-                                 0, expected_iv_max);
-            if (ret) {
-                fprintf(stderr, "Error: Failed to load IV from '%s': %s\n",
-                        cli.iv_src, aes_strerror(ret));
+            iv_buf = (uint8_t *)malloc(gen_len);
+            if (!iv_buf) {
+                ret = -ENOMEM;
                 goto out;
             }
 
-            /* Warn if IV length doesn't match typical expectations. */
-            if (cli.mode == FCE_AES_CBC && iv_len != 16)
-                fprintf(stderr, "Warning: CBC typically uses a 16-byte IV "
-                        "(got %zu bytes).\n", iv_len);
-            else if ((cli.mode == FCE_AES_CTR || cli.mode == FCE_AES_GCM) &&
-                     iv_len != 12)
-                fprintf(stderr, "Warning: %s typically uses a 12-byte IV/nonce "
-                        "(got %zu bytes).\n",
-                        cli.mode == FCE_AES_CTR ? "CTR" : "GCM", iv_len);
-        } else if (cli.dir == FCE_AES_ENCRYPT) {
-            fprintf(stderr, "Error: An IV / nonce is required for %s mode "
-                    "(encrypt). Use -v <hex> or -V <file>.\n",
-                    cli.mode == FCE_AES_CBC ? "CBC" :
-                    cli.mode == FCE_AES_CTR ? "CTR" : "GCM");
-            ret = 1;
-            goto out;
+            ret = generate_random_iv(iv_buf, gen_len);
+            if (ret) {
+                fprintf(stderr, "Error: Failed to generate random IV: %s\n",
+                        aes_strerror(ret));
+                goto out;
+            }
+
+            iv_len = gen_len;
+
+            printf("Generated random %zu-byte IV: ", gen_len);
+            for (size_t i = 0; i < gen_len; i++)
+                printf("%02x", iv_buf[i]);
+            printf("\n");
         }
-        /* For decrypt without CLI IV: the IV will be extracted from
-         * the input file once it has been read (see below). */
+        /* For decrypt: the IV will be extracted from the input file
+         * once it has been read (see below). */
     }
 
     /* ---- Load AAD (GCM only) ---- */

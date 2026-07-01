@@ -71,10 +71,9 @@ void print_usage(const char *prog)
     printf("  -k <hex>        AES key as a hex string (32/48/64 hex chars)\n");
     printf("  -K <file>       AES key from a binary file (16/24/32 bytes)\n");
     printf("\n");
-    printf("IV / nonce (required for encrypt with CBC, CTR, GCM; choose one):\n");
-    printf("  -v <hex>        IV as a hex string (optional for decrypt)\n");
-    printf("  -V <file>       IV from a binary file (optional for decrypt)\n");
-    printf("\n");
+    printf("IV / nonce:\n");
+    printf("  (auto-generated from /dev/urandom for CBC/CTR/GCM;\n");
+    printf("   embedded in output file and extracted on decrypt)\n");
     printf("AAD (GCM only, optional):\n");
     printf("  -a <hex>        Additional Authenticated Data as a hex string\n");
     printf("  -A <file>       AAD from a binary file\n");
@@ -97,7 +96,6 @@ int parse_cli_args(int argc, char *argv[], struct fce_aes_cli_args *args)
     int mode_val;
     int has_e = 0, has_d = 0;
     int has_k = 0, has_K = 0;
-    int has_v = 0, has_V = 0;
 
     if (!args)
         return -EINVAL;
@@ -110,7 +108,7 @@ int parse_cli_args(int argc, char *argv[], struct fce_aes_cli_args *args)
     /* getopt uses global optind / optarg / optopt. */
     opterr = 0;  /* we handle errors ourselves */
 
-    while ((opt = getopt(argc, argv, "edm:i:o:k:K:v:V:a:A:h")) != -1) {
+    while ((opt = getopt(argc, argv, "edm:i:o:k:K:a:A:h")) != -1) {
         switch (opt) {
         case 'e':
             has_e = 1;
@@ -142,16 +140,6 @@ int parse_cli_args(int argc, char *argv[], struct fce_aes_cli_args *args)
             has_K = 1;
             args->key_src     = optarg;
             args->key_is_file = 1;
-            break;
-        case 'v':
-            has_v = 1;
-            args->iv_src     = optarg;
-            args->iv_is_file = 0;
-            break;
-        case 'V':
-            has_V = 1;
-            args->iv_src     = optarg;
-            args->iv_is_file = 1;
             break;
         case 'a':
             args->aad_src     = optarg;
@@ -204,23 +192,8 @@ int parse_cli_args(int argc, char *argv[], struct fce_aes_cli_args *args)
         return -EINVAL;
     }
 
-    /* IV is required for encrypt with CBC, CTR, GCM.
-     * For decrypt, IV is optional — it can be extracted from the
-     * input file (see fce_aes_app.c). */
-    if (args->mode != FCE_AES_ECB) {
-        if (has_v && has_V) {
-            fprintf(stderr, "Error: Options -v (hex IV) and -V (IV file) "
-                    "are mutually exclusive.\n");
-            return -EINVAL;
-        }
-        if (!has_v && !has_V && args->dir != FCE_AES_DECRYPT) {
-            fprintf(stderr, "Error: An IV / nonce is required for %s mode "
-                    "(encrypt). Use -v <hex> or -V <file>.\n",
-                    args->mode == FCE_AES_CBC ? "CBC" :
-                    args->mode == FCE_AES_CTR ? "CTR" : "GCM");
-            return -EINVAL;
-        }
-    }
+    /* IV is always auto-generated on encrypt or extracted from the
+     * input file on decrypt (see fce_aes_app.c).  No CLI option. */
 
     /* Input file is required for normal (non-self-test) mode. */
     if (!args->input_path) {

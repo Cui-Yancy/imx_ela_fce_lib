@@ -120,8 +120,11 @@ static const uint8_t test_plaintext[256] = {
 /**
  * test_roundtrip — Encrypt then decrypt, verify match.
  *
+ * When @p use_openssl is non-zero the test uses the OpenSSL software backend;
+ * otherwise it uses the default backend (PRIME when USE_PRIME is defined).
+ *
  * @param mode        AES mode.
- * @param dir_label   Human-readable label for the direction tested.
+ * @param mode_name   Human-readable label.
  * @param key         Key bytes.
  * @param key_len     Key length.
  * @param iv          IV / nonce (may be NULL for ECB).
@@ -130,6 +133,7 @@ static const uint8_t test_plaintext[256] = {
  * @param aad_len     AAD length.
  * @param plaintext   Input plaintext.
  * @param pt_len      Plaintext length.
+ * @param use_openssl Non-zero to use the OpenSSL backend for this round-trip.
  *
  * @return 0 on success, -1 on failure.
  */
@@ -138,7 +142,8 @@ static int test_roundtrip(enum fce_aes_mode mode,
                           const uint8_t *key, size_t key_len,
                           const uint8_t *iv, size_t iv_len,
                           const uint8_t *aad, size_t aad_len,
-                          const uint8_t *plaintext, size_t pt_len)
+                          const uint8_t *plaintext, size_t pt_len,
+                          int use_openssl)
 {
     uint8_t *ciphertext = NULL;
     uint8_t *decrypted  = NULL;
@@ -173,12 +178,22 @@ static int test_roundtrip(enum fce_aes_mode mode,
     enc_params.tag       = enc_tag;
     enc_params.tag_len   = sizeof(enc_tag);
 
-    ret = aes_operation(&enc_params);
+    if (use_openssl)
+        ret = aes_openssl_operation(&enc_params);
+    else
+        ret = aes_operation(&enc_params);
     if (ret) {
-        printf("  %s encrypt FAILED (error: %s)\n",
-               mode_name, aes_strerror(ret));
+        const char *bn = use_openssl ? "OpenSSL" : "PRIME";
+        printf("  %s encrypt FAILED (%s: %s)\n",
+               mode_name, bn, aes_strerror(ret));
         goto out;
     }
+
+    /* For GCM, propagate the encryption tag to the decryption parameters
+     * so that authentication verification can succeed.  The backend must
+     * have written the tag into enc_tag during encryption. */
+    if (mode == FCE_AES_GCM)
+        memcpy(dec_tag, enc_tag, 16);
 
     /* ---- Decrypt ----
      *
@@ -202,10 +217,14 @@ static int test_roundtrip(enum fce_aes_mode mode,
     dec_params.tag       = dec_tag;
     dec_params.tag_len   = sizeof(dec_tag);
 
-    ret = aes_operation(&dec_params);
+    if (use_openssl)
+        ret = aes_openssl_operation(&dec_params);
+    else
+        ret = aes_operation(&dec_params);
     if (ret) {
-        printf("  %s decrypt FAILED (error: %s)\n",
-               mode_name, aes_strerror(ret));
+        const char *bn = use_openssl ? "OpenSSL" : "PRIME";
+        printf("  %s decrypt FAILED (%s: %s)\n",
+               mode_name, bn, aes_strerror(ret));
         goto out;
     }
 
@@ -252,8 +271,9 @@ out:
 }
 
 /* ======================================================================
- * Cross-verify: PRIME vs OpenSSL
+ * Cross-verify: PRIME vs OpenSSL  (PRIME build only)
  * ====================================================================== */
+#if defined(USE_PRIME)
 
 /**
  * test_cross — Cross-verify PRIME and OpenSSL backends produce identical
@@ -451,6 +471,8 @@ out:
     return ret;
 }
 
+#endif /* USE_PRIME */
+
 /* ======================================================================
  * Self-test runner
  * ====================================================================== */
@@ -462,7 +484,11 @@ int run_selftest(void)
 
     printf("\n");
     printf("============================================\n");
+#if defined(USE_PRIME)
     printf("  PRIME FCE AES Self-Test + OpenSSL Cross-Verify\n");
+#else
+    printf("  OpenSSL AES Self-Test\n");
+#endif
     printf("============================================\n");
     printf("\n");
 
@@ -471,7 +497,9 @@ int run_selftest(void)
                             ecb_key, sizeof(ecb_key),
                             NULL, 0,
                             NULL, 0,
-                            test_plaintext, sizeof(test_plaintext));
+                            test_plaintext, sizeof(test_plaintext),
+#if defined(USE_PRIME)
+                            0);  /* use PRIME backend */
     if (result) ret = result;
 
     result = test_cross(FCE_AES_ECB, "AES-256-ECB",
@@ -479,6 +507,9 @@ int run_selftest(void)
                         NULL, 0,
                         NULL, 0,
                         test_plaintext, sizeof(test_plaintext));
+#else
+                            1);  /* use OpenSSL backend */
+#endif
     if (result) ret = result;
 
     /* ---- CBC ---- */
@@ -486,7 +517,9 @@ int run_selftest(void)
                             cbc_key, sizeof(cbc_key),
                             cbc_iv, sizeof(cbc_iv),
                             NULL, 0,
-                            test_plaintext, sizeof(test_plaintext));
+                            test_plaintext, sizeof(test_plaintext),
+#if defined(USE_PRIME)
+                            0);
     if (result) ret = result;
 
     result = test_cross(FCE_AES_CBC, "AES-256-CBC",
@@ -494,6 +527,9 @@ int run_selftest(void)
                         cbc_iv, sizeof(cbc_iv),
                         NULL, 0,
                         test_plaintext, sizeof(test_plaintext));
+#else
+                            1);
+#endif
     if (result) ret = result;
 
     /* ---- CTR ---- */
@@ -501,7 +537,9 @@ int run_selftest(void)
                             ctr_key, sizeof(ctr_key),
                             ctr_iv, sizeof(ctr_iv),
                             NULL, 0,
-                            test_plaintext, sizeof(test_plaintext));
+                            test_plaintext, sizeof(test_plaintext),
+#if defined(USE_PRIME)
+                            0);
     if (result) ret = result;
 
     result = test_cross(FCE_AES_CTR, "AES-256-CTR",
@@ -509,6 +547,9 @@ int run_selftest(void)
                         ctr_iv, sizeof(ctr_iv),
                         NULL, 0,
                         test_plaintext, sizeof(test_plaintext));
+#else
+                            1);
+#endif
     if (result) ret = result;
 
     /* ---- GCM ---- */
@@ -516,7 +557,9 @@ int run_selftest(void)
                             gcm_key, sizeof(gcm_key),
                             gcm_iv, sizeof(gcm_iv),
                             gcm_aad, sizeof(gcm_aad),
-                            test_plaintext, sizeof(test_plaintext));
+                            test_plaintext, sizeof(test_plaintext),
+#if defined(USE_PRIME)
+                            0);
     if (result) ret = result;
 
     result = test_cross(FCE_AES_GCM, "AES-256-GCM",
@@ -524,6 +567,9 @@ int run_selftest(void)
                         gcm_iv, sizeof(gcm_iv),
                         gcm_aad, sizeof(gcm_aad),
                         test_plaintext, sizeof(test_plaintext));
+#else
+                            1);
+#endif
     if (result) ret = result;
 
     printf("\n");

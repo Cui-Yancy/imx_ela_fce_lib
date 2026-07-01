@@ -16,11 +16,18 @@
 #        make CROSS_COMPILE=aarch64-poky-linux- \
 #             SDKTARGETSYSROOT=/path/to/sysroots/armv8a-poky-linux
 #
-# The ELE library (libprime) must be built first with PLAT=prime:
-#   cd ../ele && make PLAT=prime
+# PRIME backend (NXP i.MX943 crypto hardware):
+#
+#   The ELE library (libprime) must be built first with PLAT=prime:
+#     cd ../ele && make PLAT=prime
+#
+#   To build without PRIME (pure OpenSSL, portable to any Linux platform):
+#     make USE_PRIME=0
 #
 # Variables
 # ---------
+# USE_PRIME         Build with PRIME hardware backend.  Set to 0 for a
+#                   portable build that uses OpenSSL only.  Default: 1.
 # CROSS_COMPILE     Toolchain prefix (e.g. aarch64-poky-linux-).
 #                   Not needed when using a Yocto SDK environment.
 # SDKTARGETSYSROOT  Yocto SDK sysroot path (set --sysroot for cross builds).
@@ -29,6 +36,7 @@
 # DESTDIR           Installation prefix for 'make install'.
 # BINDIR            Binary installation directory (within DESTDIR).
 
+USE_PRIME          ?= 1
 CROSS_COMPILE      ?=
 SDKTARGETSYSROOT   ?=
 ELE_DIR            ?= ../ele
@@ -62,15 +70,22 @@ OBJS := $(SRCS:.c=.o)
 # Compiler and linker flags
 # ------------------------------------------------------------------
 
-# Include paths: local headers (include/), then PRIME API headers.
+# Include paths: local headers first.
 CFLAGS := -O2 -Wall -Werror \
-          -Iinclude \
-          -I$(ELE_DIR)/include \
-          -I$(ELE_DIR)/include/prime
+          -Iinclude
 
-# Link against the PRIME shared library.
-LDFLAGS := -L$(ELE_DIR)
-LDLIBS  := -lprime -lcrypto
+# Base link: OpenSSL crypto library (always required).
+LDLIBS  := -lcrypto
+LDFLAGS :=
+
+# PRIME-specific: include paths, library, and compile-time define.
+ifeq ($(USE_PRIME),1)
+CFLAGS  += -DUSE_PRIME \
+           -I$(ELE_DIR)/include \
+           -I$(ELE_DIR)/include/prime
+LDFLAGS += -L$(ELE_DIR)
+LDLIBS  += -lprime
+endif
 
 # When SDKTARGETSYSROOT is set, pass --sysroot so the compiler and linker
 # find system headers and libraries under the sysroot.  The explicit

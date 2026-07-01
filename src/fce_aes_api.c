@@ -11,8 +11,13 @@
  *   - Shared-memory buffer layout and cache coherency
  *   - Submission of cipher (ECB/CBC/CTR) and AEAD (GCM) operations
  *
- * Cache coherency notes
- * ----------------------
+ * When compiled without USE_PRIME (USE_PRIME=0 in the Makefile), all public
+ * functions become stubs that return -ENODEV ("Crypto service not available").
+ * This allows the application to be built on any Linux platform using only
+ * the OpenSSL backend (aes_openssl_operation).
+ *
+ * Cache coherency notes (PRIME build only)
+ * ------------------------------------------
  * The PRIME hardware accesses data via DMA.  Before submitting an operation
  * we must clean (write back) the data cache so that the hardware sees the
  * latest values.  After the operation completes we must clean-and-invalidate
@@ -29,6 +34,11 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+
+/* ======================================================================
+ * PRIME hardware backend
+ * ====================================================================== */
+#ifdef USE_PRIME
 
 /* PRIME library headers (from the ELE tree).
  * The build system must add the appropriate -I paths.
@@ -508,7 +518,59 @@ out_close:
 }
 
 /* ======================================================================
- * Error string
+ * PRIME build — error string
+ * ====================================================================== */
+
+#else /* !USE_PRIME */
+
+/* ======================================================================
+ * Stub implementations (pure OpenSSL / no-PRIME build)
+ *
+ * When USE_PRIME is not set, the PRIME hardware is unavailable.  These
+ * stubs return -ENODEV so that any caller that tries to use the PRIME
+ * backend gets a clear diagnostic.  The application always uses the
+ * OpenSSL backend in this configuration.
+ * ====================================================================== */
+
+int aes_session_open(struct aes_session *sess)
+{
+    (void)sess;
+    return -ENODEV;
+}
+
+int aes_session_load_key(struct aes_session *sess,
+                         const uint8_t *key, size_t key_len)
+{
+    (void)sess;
+    (void)key;
+    (void)key_len;
+    return -ENODEV;
+}
+
+int aes_session_crypto(struct aes_session *sess, struct aes_params *params)
+{
+    (void)sess;
+    (void)params;
+    return -ENODEV;
+}
+
+void aes_session_close(struct aes_session *sess)
+{
+    /* Idempotent: just clear the struct. */
+    if (sess)
+        memset(sess, 0, sizeof(*sess));
+}
+
+int aes_operation(struct aes_params *params)
+{
+    (void)params;
+    return -ENODEV;
+}
+
+#endif /* USE_PRIME */
+
+/* ======================================================================
+ * Error string (common to both build configurations)
  * ====================================================================== */
 
 const char *aes_strerror(int err)

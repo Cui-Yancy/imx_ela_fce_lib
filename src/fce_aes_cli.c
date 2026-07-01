@@ -65,8 +65,12 @@ void print_usage(const char *prog)
     printf("  -m <mode>       Cipher mode: ECB, CBC, CTR, GCM  (default: CBC)\n");
     printf("\n");
     printf("Backend:\n");
+#ifdef USE_PRIME
     printf("  -s              Use OpenSSL software crypto instead of PRIME hardware\n");
     printf("                  (for cross-verification)\n");
+#else
+    printf("  (PRIME hardware not available — always uses OpenSSL software crypto)\n");
+#endif
     printf("\n");
     printf("Input / Output:\n");
     printf("  -i <file>       Input data file (binary)\n");

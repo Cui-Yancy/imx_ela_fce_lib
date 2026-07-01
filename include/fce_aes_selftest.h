@@ -28,9 +28,9 @@ extern "C" {
  *   3. Verifies that the decrypted text matches the original plaintext.
  *   4. For GCM, also verifies that the authentication tag is non-zero
  *      and that decryption with the correct tag succeeds.
- *   5. Cross-verifies that the PRIME and OpenSSL backends produce
- *      identical results (ciphertext comparison, cross-decrypt, and
- *      GCM tag comparison).
+ *   5. When built with PRIME support (USE_PRIME=1), cross-verifies that
+ *      the PRIME and OpenSSL backends produce identical results
+ *      (ciphertext comparison, cross-decrypt, and GCM tag comparison).
  *
  * @return 0 if all tests pass, or a negative errno value if any fail.
  */

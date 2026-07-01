@@ -8,6 +8,10 @@
  *   fce_aes_app              — run built-in self-test
  *   fce_aes_app [options]    — encrypt / decrypt with user-supplied data
  *
+ * Build variants:
+ *   make USE_PRIME=1   — full build with NXP PRIME hardware backend (default)
+ *   make USE_PRIME=0   — portable build using OpenSSL only
+ *
  * See the help text (-h) for full option descriptions.
  */
 
@@ -186,7 +190,13 @@ int main(int argc, char *argv[])
     params.tag       = gcm_tag;
     params.tag_len   = sizeof(gcm_tag);
 
-    /* ---- Execute ---- */
+    /* ---- Execute ----
+     *
+     * When built with PRIME support (USE_PRIME=1), the user selects the
+     * backend via the -s flag.  Without PRIME (USE_PRIME=0) the OpenSSL
+     * software backend is always used.
+     */
+#if defined(USE_PRIME)
     if (cli.use_openssl) {
         if (!cli.quiet)
             printf("Using OpenSSL software crypto backend.\n");
@@ -200,6 +210,16 @@ int main(int argc, char *argv[])
                 backend, aes_strerror(ret));
         goto out;
     }
+#else
+    if (!cli.quiet)
+        printf("Using OpenSSL software crypto backend.\n");
+    ret = aes_openssl_operation(&params);
+    if (ret) {
+        fprintf(stderr, "Error: AES operation failed (OpenSSL): %s\n",
+                aes_strerror(ret));
+        goto out;
+    }
+#endif
 
     /* ---- Write output ----
      *

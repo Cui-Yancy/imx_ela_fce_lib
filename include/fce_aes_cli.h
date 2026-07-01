@@ -44,7 +44,9 @@ struct fce_aes_cli_args {
     int                quiet;
 
     /** Non-zero to use OpenSSL software crypto instead of PRIME hardware
-     *  (from -s).  Used for cross-verification of PRIME results. */
+     *  (from -s).  Used for cross-verification of PRIME results.
+     *  In builds without PRIME support (USE_PRIME=0) this flag has no
+     *  effect — the OpenSSL backend is always used. */
     int                use_openssl;
 };
 

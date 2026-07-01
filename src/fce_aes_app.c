@@ -61,20 +61,15 @@ int main(int argc, char *argv[])
     struct aes_params params;
     uint8_t *key_buf     = NULL;
     uint8_t *iv_buf      = NULL;
-    uint8_t *aad_buf     = NULL;
     uint8_t *input_buf   = NULL;
     uint8_t *output_buf  = NULL;
     uint8_t *crypto_input = NULL;   /* pointer to data actually fed to crypto */
     size_t   crypto_len   = 0;      /* length of crypto_input */
     uint8_t gcm_tag[FCE_AES_GCM_TAG_SIZE];
     /* Fixed AAD for GCM mode (firmware requires non-zero-length AAD). */
-    static const uint8_t default_aad[16] = {
-        0x8c, 0xbc, 0xf1, 0x56, 0xf0, 0xa2, 0x30, 0x1d,
-        0x83, 0xee, 0x04, 0x16, 0xd9, 0xb7, 0xbb, 0x2f,
-    };
+    static const uint8_t default_aad[16] = "NXP-iMX9-AES-GCM";
     size_t key_len   = 0;
     size_t iv_len    = 0;
-    size_t aad_len   = 0;
     size_t input_len = 0;
     int ret;
 
@@ -137,18 +132,6 @@ int main(int argc, char *argv[])
         }
         /* For decrypt: the IV will be extracted from the input file
          * once it has been read (see below). */
-    }
-
-    /* ---- Load AAD (GCM only) ---- */
-    if (cli.mode == FCE_AES_GCM && cli.aad_src) {
-        ret = load_key_or_iv(cli.aad_src, cli.aad_is_file,
-                             &aad_buf, &aad_len,
-                             0, 0);  /* any length accepted */
-        if (ret) {
-            fprintf(stderr, "Error: Failed to load AAD from '%s': %s\n",
-                    cli.aad_src, aes_strerror(ret));
-            goto out;
-        }
     }
 
     /* ---- Read input file ---- */
@@ -258,12 +241,8 @@ int main(int argc, char *argv[])
     params.key_len   = key_len;
     params.iv        = iv_buf;
     params.iv_len    = iv_len;
-    params.aad       = (cli.mode == FCE_AES_GCM)
-                            ? (aad_buf ? aad_buf : default_aad)
-                            : NULL;
-    params.aad_len   = (cli.mode == FCE_AES_GCM)
-                            ? (aad_buf ? aad_len : sizeof(default_aad))
-                            : 0;
+    params.aad       = (cli.mode == FCE_AES_GCM) ? default_aad : NULL;
+    params.aad_len   = (cli.mode == FCE_AES_GCM) ? sizeof(default_aad) : 0;
     params.input     = crypto_input;
     params.input_len = crypto_len;
     params.output    = output_buf;
@@ -345,7 +324,6 @@ int main(int argc, char *argv[])
 out:
     free(key_buf);
     free(iv_buf);
-    free(aad_buf);
     free(input_buf);
     free(output_buf);
     return ret ? 1 : 0;

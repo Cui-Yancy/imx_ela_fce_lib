@@ -39,11 +39,6 @@ struct fce_aes_cli_args {
     const char        *key_src;
     /** Non-zero if key_src is a file path (-K rather than -k). */
     int                key_is_file;
-
-    /** AAD source string from -a or -A (NULL if absent; GCM only). */
-    const char        *aad_src;
-    /** Non-zero if aad_src is a file path (-A rather than -a). */
-    int                aad_is_file;
 };
 
 /**

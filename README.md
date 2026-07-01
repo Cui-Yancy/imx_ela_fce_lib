@@ -201,8 +201,9 @@ aes_session_close(&sess);
 - The IV (nonce) is automatically generated from `/dev/urandom` during
   encryption for CBC, CTR, and GCM modes.  The generated IV is printed
   to stdout and embedded in the output file.  During decryption the IV
-  is extracted from the input file automatically, so only the key (and
-  AAD for GCM if custom AAD was used) is required.
+  is extracted from the input file automatically, so only the key is
+  required.
+- GCM uses a built-in default AAD ("NXP-iMX9-AES-GCM", 16 bytes).
 - Maximum input data size per operation: 256 KiB.
 
 ## License

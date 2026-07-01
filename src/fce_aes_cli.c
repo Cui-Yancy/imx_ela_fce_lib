@@ -5,7 +5,7 @@
  * fce_aes_cli.c — Command-line argument parsing.
  *
  * Uses POSIX getopt() to handle the following options:
- *   -e, -d, -m, -i, -o, -k, -K, -v, -V, -a, -A, -h
+ *   -e, -d, -m, -i, -o, -k, -K, -h
  */
 
 #include "fce_aes_cli.h"
@@ -74,9 +74,8 @@ void print_usage(const char *prog)
     printf("IV / nonce:\n");
     printf("  (auto-generated from /dev/urandom for CBC/CTR/GCM;\n");
     printf("   embedded in output file and extracted on decrypt)\n");
-    printf("AAD (GCM only, optional):\n");
-    printf("  -a <hex>        Additional Authenticated Data as a hex string\n");
-    printf("  -A <file>       AAD from a binary file\n");
+    printf("AAD (GCM only):\n");
+    printf("  (built-in default used automatically)\n");
     printf("\n");
     printf("Other:\n");
     printf("  -h              Show this help message and exit\n");
@@ -108,7 +107,7 @@ int parse_cli_args(int argc, char *argv[], struct fce_aes_cli_args *args)
     /* getopt uses global optind / optarg / optopt. */
     opterr = 0;  /* we handle errors ourselves */
 
-    while ((opt = getopt(argc, argv, "edm:i:o:k:K:a:A:h")) != -1) {
+    while ((opt = getopt(argc, argv, "edm:i:o:k:K:h")) != -1) {
         switch (opt) {
         case 'e':
             has_e = 1;
@@ -140,14 +139,6 @@ int parse_cli_args(int argc, char *argv[], struct fce_aes_cli_args *args)
             has_K = 1;
             args->key_src     = optarg;
             args->key_is_file = 1;
-            break;
-        case 'a':
-            args->aad_src     = optarg;
-            args->aad_is_file = 0;
-            break;
-        case 'A':
-            args->aad_src     = optarg;
-            args->aad_is_file = 1;
             break;
         case 'h':
             print_usage(argv[0]);

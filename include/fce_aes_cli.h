@@ -39,6 +39,9 @@ struct fce_aes_cli_args {
     const char        *key_src;
     /** Non-zero if key_src is a file path (-K rather than -k). */
     int                key_is_file;
+
+    /** Non-zero to suppress informational output (from -q). */
+    int                quiet;
 };
 
 /**

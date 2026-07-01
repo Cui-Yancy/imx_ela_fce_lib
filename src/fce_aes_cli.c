@@ -79,6 +79,7 @@ void print_usage(const char *prog)
     printf("\n");
     printf("Other:\n");
     printf("  -h              Show this help message and exit\n");
+    printf("  -q              Quiet mode — suppress informational output\n");
     printf("\n");
     printf("If no arguments are given the application runs a built-in\n");
     printf("self-test using known-answer test vectors for all four modes.\n");
@@ -107,7 +108,7 @@ int parse_cli_args(int argc, char *argv[], struct fce_aes_cli_args *args)
     /* getopt uses global optind / optarg / optopt. */
     opterr = 0;  /* we handle errors ourselves */
 
-    while ((opt = getopt(argc, argv, "edm:i:o:k:K:h")) != -1) {
+    while ((opt = getopt(argc, argv, "edm:i:o:k:K:hq")) != -1) {
         switch (opt) {
         case 'e':
             has_e = 1;
@@ -144,6 +145,9 @@ int parse_cli_args(int argc, char *argv[], struct fce_aes_cli_args *args)
             print_usage(argv[0]);
             exit(0);
             /* not reached */
+        case 'q':
+            args->quiet = 1;
+            break;
         case '?':
             if (optopt)
                 fprintf(stderr, "Error: Unknown option '-%c' or "

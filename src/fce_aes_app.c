@@ -81,7 +81,8 @@ int main(int argc, char *argv[])
                     aes_strerror(ret));
             goto out;
         }
-        format_print_iv(iv_buf, iv_len);
+        if (!cli.quiet)
+            format_print_iv(iv_buf, iv_len);
     }
 
     /* ---- Read input file ---- */
@@ -143,11 +144,13 @@ int main(int argc, char *argv[])
         if (tag_ptr)
             memcpy(gcm_tag, tag_ptr, FCE_AES_GCM_TAG_SIZE);
 
-        printf("Extracted %zu-byte IV", iv_len);
-        if (tag_ptr)
-            printf(" and %zu-byte authentication tag",
-                   (size_t)FCE_AES_GCM_TAG_SIZE);
-        printf(" from input file.\n");
+        if (!cli.quiet) {
+            printf("Extracted %zu-byte IV", iv_len);
+            if (tag_ptr)
+                printf(" and %zu-byte authentication tag",
+                       (size_t)FCE_AES_GCM_TAG_SIZE);
+            printf(" from input file.\n");
+        }
     }
 
     /* Set crypto_input / crypto_len for all other cases (encrypt,
@@ -223,12 +226,12 @@ int main(int argc, char *argv[])
         goto out;
     }
 
-    if (cli.output_path)
+    if (!cli.quiet && cli.output_path)
         printf("Wrote %zu bytes to '%s'.\n",
                file_len ? file_len : crypto_len, cli.output_path);
 
     /* ---- For GCM, display the authentication tag ---- */
-    if (cli.mode == FCE_AES_GCM)
+    if (!cli.quiet && cli.mode == FCE_AES_GCM)
         format_print_tag(gcm_tag, FCE_AES_GCM_TAG_SIZE,
                          cli.dir == FCE_AES_ENCRYPT);
 

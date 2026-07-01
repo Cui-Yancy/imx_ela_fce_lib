@@ -443,10 +443,11 @@ const char *aes_strerror(int err)
     case 0:              return "Success";
     case -EINVAL:        return "Invalid parameter";
     case -ENOMEM:        return "Memory allocation failed";
-    case -ENODEV:        return "PRIME service not available";
+    case -ENODEV:        return "Crypto service not available";
     case -ENOSPC:        return "Output buffer too small";
-    case -EFBIG:         return "Input data too large for shared buffer";
-    case -EIO:           return "PRIME hardware operation failed";
+    case -EFBIG:         return "Input data too large";
+    case -EIO:           return "Crypto operation failed";
+    case -EBADMSG:       return "Authentication failed (GCM tag mismatch)";
     default:             return "Unknown error";
     }
 }

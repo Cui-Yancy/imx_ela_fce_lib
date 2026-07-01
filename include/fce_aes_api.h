@@ -226,7 +226,7 @@ int aes_operation(struct aes_params *params);
  * Return a human-readable string for an error code returned by any of the
  * functions above.
  *
- * @param[in] err  Negative errno-style value (e.g. -EINVAL, -ENODEV).
+ * @param[in] err  Negative errno-style value (e.g. -EINVAL, -ENODEV, -EBADMSG).
  *
  * @return Pointer to a statically-allocated string (never NULL).
  */

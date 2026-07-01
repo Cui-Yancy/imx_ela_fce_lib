@@ -11,6 +11,8 @@ using the **PRIME** cryptographic hardware engine on NXP i.MX943 processors.
   - One-shot `aes_operation()` for convenience
   - Session-based API (`aes_session_*`) for efficient repeated operations
 - **Dual key input**: hexadecimal strings or binary files; IV auto-generated from /dev/urandom
+- **Dual backend**: PRIME hardware engine (default) or OpenSSL software crypto (`-s`)
+- **Cross-verification**: run the same key/IV/data through both backends to validate PRIME correctness
 - **Built-in self-test**: run with no arguments to verify all four modes
 
 ## Directory Structure
@@ -23,16 +25,18 @@ fce_aes_app/
     fce_aes_api.h       Core PRIME AES API
     fce_aes_cli.h       CLI argument parser
     fce_aes_io.h        I/O utilities
+    fce_aes_openssl.h   OpenSSL software crypto backend
     fce_aes_selftest.h  Self-test runner
   src/              — Implementation files
     fce_aes_app.c       Main entry point
     fce_aes_api.c       PRIME AES engine wrapper (core API)
     fce_aes_cli.c       Command-line argument parsing (getopt)
     fce_aes_io.c        File and hex-string I/O utilities
+    fce_aes_openssl.c   OpenSSL AES implementation (EVP API)
     fce_aes_selftest.c  Built-in test vectors and self-test runner
 ```
 
-Dependencies flow one direction: `main → {cli, io, api, selftest}`.
+Dependencies flow one direction: `main → {cli, io, openssl, api, selftest}`.
 No circular dependencies between modules.
 
 ## Prerequisites
@@ -140,6 +144,30 @@ need to supply the key when decrypting (see below).
     -i ciphertext.bin -o restored.bin
 ```
 
+### Cross-verification: PRIME ↔ OpenSSL
+
+Use the `-s` flag to run the same operation through the OpenSSL software
+backend, then compare results with the PRIME hardware path:
+
+```bash
+# ECB is best for direct comparison (no IV — deterministic)
+./fce_aes_app    -e -m ECB -k <key> -i plaintext.bin -o hw_ecb.bin
+./fce_aes_app -s -e -m ECB -k <key> -i plaintext.bin -o sw_ecb.bin
+diff hw_ecb.bin sw_ecb.bin && echo "PRIME matches OpenSSL"
+
+# For modes with an IV (CBC / CTR / GCM), compare round-trips:
+./fce_aes_app    -e -m CBC -k <key> -i plaintext.bin -o hw_cbc.bin
+./fce_aes_app -s -e -m CBC -k <key> -i plaintext.bin -o sw_cbc.bin
+
+./fce_aes_app -d -m CBC -k <key> -i hw_cbc.bin -o hw_restored.bin
+./fce_aes_app -d -m CBC -k <key> -i sw_cbc.bin -o sw_restored.bin
+diff plaintext.bin hw_restored.bin && echo "PRIME round-trip OK"
+diff plaintext.bin sw_restored.bin && echo "OpenSSL round-trip OK"
+
+# For GCM, encryption also produces an authentication tag printed to
+# stdout — compare tags across backends for the same plaintext + key.
+```
+
 ## CLI Options
 
 | Option | Description |
@@ -151,6 +179,8 @@ need to supply the key when decrypting (see below).
 | `-o <file>` | Output data file (binary; default: stdout) |
 | `-k <hex>` | AES key as hex string (32/48/64 hex chars) |
 | `-K <file>` | AES key from binary file (16/24/32 bytes) |
+| `-s` | Use OpenSSL software crypto instead of PRIME hardware |
+| `-q` | Quiet mode — suppress informational output |
 | `-h` | Show help |
 
 ## C API Example
@@ -205,6 +235,13 @@ aes_session_close(&sess);
   required.
 - GCM uses a built-in default AAD ("NXP-iMX9-AES-GCM", 16 bytes).
 - Maximum input data size per operation: 256 KiB.
+- **OpenSSL backend** (`-s`):
+  - ECB and CBC run WITHOUT PKCS#7 padding to match the PRIME engine
+    behaviour — input must be a multiple of 16 bytes.
+  - CTR mode pads the 12-byte PRIME nonce to a 16-byte counter block as
+    `[nonce || 0x00000001]` (NIST SP 800-38A initial counter value = 1).
+  - GCM authentication tag verification is performed by OpenSSL on
+    decrypt; a mismatch returns an error.
 
 ## License
 

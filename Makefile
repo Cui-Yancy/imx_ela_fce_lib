@@ -54,6 +54,7 @@ SRCS := src/fce_aes_app.c \
         src/fce_aes_cli.c \
         src/fce_aes_format.c \
         src/fce_aes_io.c \
+        src/fce_aes_openssl.c \
         src/fce_aes_selftest.c
 OBJS := $(SRCS:.c=.o)
 
@@ -69,7 +70,7 @@ CFLAGS := -O2 -Wall -Werror \
 
 # Link against the PRIME shared library.
 LDFLAGS := -L$(ELE_DIR)
-LDLIBS  := -lprime
+LDLIBS  := -lprime -lcrypto
 
 # When SDKTARGETSYSROOT is set, pass --sysroot so the compiler and linker
 # find system headers and libraries under the sysroot.  The explicit

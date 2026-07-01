@@ -54,7 +54,8 @@ void print_usage(const char *prog)
     printf("\n");
     printf("Usage: %s [options]\n", prog);
     printf("\n");
-    printf("Encrypt or decrypt data using the i.MX943 PRIME AES hardware engine.\n");
+    printf("Encrypt or decrypt data using the i.MX943 PRIME AES hardware engine\n");
+    printf("(default) or OpenSSL software crypto (-s).\n");
     printf("\n");
     printf("Operation:\n");
     printf("  -e              Encrypt (default)\n");
@@ -62,6 +63,10 @@ void print_usage(const char *prog)
     printf("\n");
     printf("AES mode:\n");
     printf("  -m <mode>       Cipher mode: ECB, CBC, CTR, GCM  (default: CBC)\n");
+    printf("\n");
+    printf("Backend:\n");
+    printf("  -s              Use OpenSSL software crypto instead of PRIME hardware\n");
+    printf("                  (for cross-verification)\n");
     printf("\n");
     printf("Input / Output:\n");
     printf("  -i <file>       Input data file (binary)\n");
@@ -108,7 +113,7 @@ int parse_cli_args(int argc, char *argv[], struct fce_aes_cli_args *args)
     /* getopt uses global optind / optarg / optopt. */
     opterr = 0;  /* we handle errors ourselves */
 
-    while ((opt = getopt(argc, argv, "edm:i:o:k:K:hq")) != -1) {
+    while ((opt = getopt(argc, argv, "edm:i:o:k:K:hqs")) != -1) {
         switch (opt) {
         case 'e':
             has_e = 1;
@@ -147,6 +152,9 @@ int parse_cli_args(int argc, char *argv[], struct fce_aes_cli_args *args)
             /* not reached */
         case 'q':
             args->quiet = 1;
+            break;
+        case 's':
+            args->use_openssl = 1;
             break;
         case '?':
             if (optopt)

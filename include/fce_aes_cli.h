@@ -42,6 +42,10 @@ struct fce_aes_cli_args {
 
     /** Non-zero to suppress informational output (from -q). */
     int                quiet;
+
+    /** Non-zero to use OpenSSL software crypto instead of PRIME hardware
+     *  (from -s).  Used for cross-verification of PRIME results. */
+    int                use_openssl;
 };
 
 /**

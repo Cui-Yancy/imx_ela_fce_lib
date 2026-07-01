@@ -15,6 +15,7 @@
 #include "fce_aes_cli.h"
 #include "fce_aes_format.h"
 #include "fce_aes_io.h"
+#include "fce_aes_openssl.h"
 #include "fce_aes_selftest.h"
 
 #include <stdio.h>
@@ -186,10 +187,17 @@ int main(int argc, char *argv[])
     params.tag_len   = sizeof(gcm_tag);
 
     /* ---- Execute ---- */
-    ret = aes_operation(&params);
+    if (cli.use_openssl) {
+        if (!cli.quiet)
+            printf("Using OpenSSL software crypto backend.\n");
+        ret = aes_openssl_operation(&params);
+    } else {
+        ret = aes_operation(&params);
+    }
     if (ret) {
-        fprintf(stderr, "Error: AES operation failed: %s\n",
-                aes_strerror(ret));
+        const char *backend = cli.use_openssl ? "OpenSSL" : "PRIME";
+        fprintf(stderr, "Error: AES operation failed (%s): %s\n",
+                backend, aes_strerror(ret));
         goto out;
     }
 

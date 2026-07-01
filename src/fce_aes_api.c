@@ -222,6 +222,7 @@ int aes_session_crypto(struct aes_session *sess, struct aes_params *params)
     uint8_t *status_area;     /* start of status buffer */
     uint8_t *aad_buf = NULL;  /* AAD buffer (GCM only) */
     uint8_t *tag_buf = NULL;  /* tag buffer (GCM only) */
+    uint32_t aad_offset = 0;  /* byte offset of AAD from data_buf (GCM) */
     uint32_t nb_ops;
     size_t status_offset;     /* byte offset of status from data_buf */
     size_t total_needed;      /* total bytes needed in shared buffer */
@@ -276,8 +277,14 @@ int aes_session_crypto(struct aes_session *sess, struct aes_params *params)
      *   [status: 4 bytes]
      */
     if (params->mode == FCE_AES_GCM) {
-        /* GCM: data + AAD + tag, status aligned after tag */
-        status_offset = params->input_len + params->aad_len +
+        /* GCM: data + padding + AAD + tag, status aligned after tag
+         *
+         * The PRIME firmware's DMA engine requires the AAD and tag
+         * buffers to be 16-byte aligned within shared memory.  Since
+         * the AAD is 16 bytes, aligning the AAD offset to 16 bytes
+         * automatically aligns the tag that follows it. */
+        aad_offset = ALIGN_UP((uint32_t)params->input_len, 16);
+        status_offset = aad_offset + params->aad_len +
                         ALIGN_UP(FCE_AES_GCM_TAG_SIZE, 64);
         total_needed  = status_offset + sizeof(status_buf_t);
     } else {
@@ -333,14 +340,18 @@ int aes_session_crypto(struct aes_session *sess, struct aes_params *params)
          *
          * Buffer layout (matching test_aes_gcm.c):
          *   [0..input_len):          data (plaintext or ciphertext)
-         *   [input_len..+aad_len):   AAD
-         *   [input_len+aad_len..+16): tag (written by firmware)
+         *   [input_len..aad_offset): padding to 16-byte alignment
+         *   [aad_offset..+aad_len):   AAD
+         *   [aad_offset+aad_len..+16): tag (written by firmware)
          *   [tag + ALIGN_UP(16,64)]:  status
+         *
+         * The AAD offset is padded to 16 bytes so that the AAD and
+         * tag buffers are correctly aligned for the PRIME DMA engine.
          */
         op.op_type = CRYPTO_OP_TYPE_AEAD;
 
-        /* AAD placed immediately after input data */
-        aad_buf = data_buf + params->input_len;
+        /* AAD placed after padding gap for alignment */
+        aad_buf = data_buf + aad_offset;
         /* Tag placed immediately after AAD */
         tag_buf = aad_buf + params->aad_len;
 
@@ -354,6 +365,16 @@ int aes_session_crypto(struct aes_session *sess, struct aes_params *params)
             /* Firmware needs a valid address even for zero-length AAD.
              * Point it at the tag buffer (which is valid memory). */
             aad_buf = tag_buf;
+        }
+
+        /* For GCM decrypt, copy the expected authentication tag to
+         * shared memory so the firmware can perform the verification.
+         * (For encrypt the tag buffer is an output written by the
+         * firmware, so no copy is needed here.) */
+        if (params->dir == FCE_AES_DECRYPT &&
+            params->tag && params->tag_len >= FCE_AES_GCM_TAG_SIZE) {
+            memcpy(tag_buf, params->tag, FCE_AES_GCM_TAG_SIZE);
+            data_cache_clean(tag_buf, FCE_AES_GCM_TAG_SIZE, 1);
         }
 
         op.op_aead_args.algo    = CRYPTO_AEAD_AES_GCM;

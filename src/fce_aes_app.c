@@ -13,47 +13,13 @@
 
 #include "fce_aes_api.h"
 #include "fce_aes_cli.h"
+#include "fce_aes_format.h"
 #include "fce_aes_io.h"
 #include "fce_aes_selftest.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <errno.h>
-
-/* ======================================================================
- * Random IV generation
- * ====================================================================== */
-
-/**
- * generate_random_iv — Fill a buffer with cryptographically random bytes
- *                      from /dev/urandom.
- *
- * @param[out] buf  Buffer to fill.
- * @param[in]  len  Number of bytes to read.
- *
- * @return 0 on success, or a negative errno value on failure.
- */
-static int generate_random_iv(uint8_t *buf, size_t len)
-{
-    FILE *urandom;
-    size_t nread;
-
-    if (!buf || len == 0)
-        return -EINVAL;
-
-    urandom = fopen("/dev/urandom", "rb");
-    if (!urandom)
-        return -errno;
-
-    nread = fread(buf, 1, len, urandom);
-    fclose(urandom);
-
-    if (nread != len)
-        return -EIO;
-
-    return 0;
-}
 
 int main(int argc, char *argv[])
 {
@@ -63,9 +29,11 @@ int main(int argc, char *argv[])
     uint8_t *iv_buf      = NULL;
     uint8_t *input_buf   = NULL;
     uint8_t *output_buf  = NULL;
-    uint8_t *crypto_input = NULL;   /* pointer to data actually fed to crypto */
-    size_t   crypto_len   = 0;      /* length of crypto_input */
-    uint8_t gcm_tag[FCE_AES_GCM_TAG_SIZE];
+    uint8_t *file_buf    = NULL;
+    const uint8_t *crypto_input = NULL;
+    size_t   crypto_len   = 0;
+    size_t   file_len     = 0;
+    uint8_t gcm_tag[FCE_AES_GCM_TAG_SIZE] = {0};
     /* Fixed AAD for GCM mode (firmware requires non-zero-length AAD). */
     static const uint8_t default_aad[16] = "NXP-iMX9-AES-GCM";
     size_t key_len   = 0;
@@ -100,38 +68,20 @@ int main(int argc, char *argv[])
         goto out;
     }
 
-    /* ---- Generate IV (if required by mode) ----
+    /* ---- Generate IV (encrypt, non-ECB) ----
      *
-     * For non-ECB modes, the IV is either:
-     *   - Encrypt: auto-generated from /dev/urandom
-     *   - Decrypt: extracted from the input file below
+     * For non-ECB modes during encryption, a random IV is automatically
+     * generated from /dev/urandom.  During decryption the IV is extracted
+     * from the input file below.
      */
-    if (cli.mode != FCE_AES_ECB) {
-        if (cli.dir == FCE_AES_ENCRYPT) {
-            size_t gen_len = (cli.mode == FCE_AES_CBC) ? 16 : 12;
-
-            iv_buf = (uint8_t *)malloc(gen_len);
-            if (!iv_buf) {
-                ret = -ENOMEM;
-                goto out;
-            }
-
-            ret = generate_random_iv(iv_buf, gen_len);
-            if (ret) {
-                fprintf(stderr, "Error: Failed to generate random IV: %s\n",
-                        aes_strerror(ret));
-                goto out;
-            }
-
-            iv_len = gen_len;
-
-            printf("Generated random %zu-byte IV: ", gen_len);
-            for (size_t i = 0; i < gen_len; i++)
-                printf("%02x", iv_buf[i]);
-            printf("\n");
+    if (cli.dir == FCE_AES_ENCRYPT && cli.mode != FCE_AES_ECB) {
+        ret = format_generate_iv(cli.mode, &iv_buf, &iv_len);
+        if (ret) {
+            fprintf(stderr, "Error: Failed to generate random IV: %s\n",
+                    aes_strerror(ret));
+            goto out;
         }
-        /* For decrypt: the IV will be extracted from the input file
-         * once it has been read (see below). */
+        format_print_iv(iv_buf, iv_len);
     }
 
     /* ---- Read input file ---- */
@@ -158,63 +108,45 @@ int main(int argc, char *argv[])
     /* ---- Parse embedded IV/tag for decrypt without CLI IV ----
      *
      * When decrypting and no IV was provided on the command line,
-     * the input file is expected to use the following layout
-     * (matching what the encrypt path produces):
+     * the input file uses the layout produced by the encrypt path:
      *
      *   ECB:   [ciphertext]
      *   CBC:   [16-byte IV][ciphertext]
      *   CTR:   [12-byte IV][ciphertext]
      *   GCM:   [12-byte IV][ciphertext][16-byte tag]
-     *
-     * We extract the IV and (for GCM) the authentication tag, then
-     * set crypto_input / crypto_len to point at the raw ciphertext.
      */
     if (cli.dir == FCE_AES_DECRYPT && cli.mode != FCE_AES_ECB && !iv_buf) {
-        size_t iv_file_len;
-        size_t tag_file_len = (cli.mode == FCE_AES_GCM)
-                                ? FCE_AES_GCM_TAG_SIZE : 0;
+        const uint8_t *iv_ptr  = NULL;
+        const uint8_t *tag_ptr = NULL;
 
-        switch (cli.mode) {
-        case FCE_AES_CBC: iv_file_len = 16; break;
-        case FCE_AES_CTR:
-        case FCE_AES_GCM: iv_file_len = 12; break;
-        default:          iv_file_len = 0;  break;
-        }
-
-        /* Validate total file size accounts for IV and tag overhead. */
-        if (input_len <= iv_file_len + tag_file_len) {
+        ret = format_parse_decrypt_input(cli.mode,
+                                         input_buf, input_len,
+                                         &iv_ptr, &iv_len,
+                                         &tag_ptr,
+                                         &crypto_input, &crypto_len);
+        if (ret) {
             fprintf(stderr, "Error: Input file too short (%zu bytes) "
-                    "to contain embedded %s layout "
-                    "(%zu-byte IV + %zu-byte tag minimum).\n",
-                    input_len,
-                    cli.mode == FCE_AES_CBC ? "CBC" :
-                    cli.mode == FCE_AES_CTR ? "CTR" : "GCM",
-                    iv_file_len, tag_file_len);
+                    "to contain embedded layout.\n", input_len);
             ret = 1;
             goto out;
         }
 
-        /* Allocate and copy IV from the file header. */
-        iv_buf = (uint8_t *)malloc(iv_file_len);
+        /* Copy IV out of the input buffer (it will be freed). */
+        iv_buf = (uint8_t *)malloc(iv_len);
         if (!iv_buf) {
             ret = 1;
             goto out;
         }
-        memcpy(iv_buf, input_buf, iv_file_len);
-        iv_len = iv_file_len;
+        memcpy(iv_buf, iv_ptr, iv_len);
 
-        /* Point crypto input past the embedded IV. */
-        crypto_input = input_buf + iv_file_len;
-        crypto_len   = input_len - iv_file_len - tag_file_len;
+        /* Copy GCM tag if present. */
+        if (tag_ptr)
+            memcpy(gcm_tag, tag_ptr, FCE_AES_GCM_TAG_SIZE);
 
-        /* For GCM, extract the authentication tag from the end. */
-        if (tag_file_len)
-            memcpy(gcm_tag, input_buf + input_len - tag_file_len,
-                   tag_file_len);
-
-        printf("Extracted %zu-byte IV", iv_file_len);
-        if (tag_file_len)
-            printf(" and %zu-byte authentication tag", tag_file_len);
+        printf("Extracted %zu-byte IV", iv_len);
+        if (tag_ptr)
+            printf(" and %zu-byte authentication tag",
+                   (size_t)FCE_AES_GCM_TAG_SIZE);
         printf(" from input file.\n");
     }
 
@@ -260,42 +192,27 @@ int main(int argc, char *argv[])
 
     /* ---- Write output ----
      *
-     * Encrypt (non-ECB): write in [IV][ciphertext][tag] format so the
-     *                      IV (and GCM tag) travel with the ciphertext.
+     * Encrypt (non-ECB): assemble [IV][ciphertext][tag] so that the
+     *                      IV and GCM tag travel with the ciphertext.
      * Decrypt / ECB:      write the plaintext / ciphertext only.
      */
-    size_t iv_out_len = 0;
-    size_t tag_out_len = 0;
-
     if (cli.dir == FCE_AES_ENCRYPT && cli.mode != FCE_AES_ECB) {
-        /* Determine the IV and tag sizes for the file layout. */
-        switch (cli.mode) {
-        case FCE_AES_CBC: iv_out_len = 16; break;
-        case FCE_AES_CTR:
-        case FCE_AES_GCM: iv_out_len = 12; break;
-        default:          iv_out_len = 0;  break;
-        }
-        if (cli.mode == FCE_AES_GCM)
-            tag_out_len = FCE_AES_GCM_TAG_SIZE;
+        const uint8_t *tag_ptr = (cli.mode == FCE_AES_GCM) ? gcm_tag : NULL;
 
-        /* Build the composite output buffer. */
-        size_t  file_len = iv_out_len + crypto_len + tag_out_len;
-        uint8_t *file_buf = (uint8_t *)malloc(file_len);
-        if (!file_buf) {
-            fprintf(stderr, "Error: Out of memory.\n");
-            ret = 1;
+        ret = format_build_encrypt_output(cli.mode,
+                                          iv_buf, iv_len,
+                                          output_buf, crypto_len,
+                                          tag_ptr,
+                                          &file_buf, &file_len);
+        if (ret) {
+            fprintf(stderr, "Error: Failed to build output layout: %s\n",
+                    aes_strerror(ret));
             goto out;
         }
 
-        if (iv_out_len > 0)
-            memcpy(file_buf, iv_buf, iv_out_len);
-        memcpy(file_buf + iv_out_len, output_buf, crypto_len);
-        if (tag_out_len > 0)
-            memcpy(file_buf + iv_out_len + crypto_len, gcm_tag,
-                   tag_out_len);
-
         ret = write_binary_file(cli.output_path, file_buf, file_len);
         free(file_buf);
+        file_buf = NULL;
     } else {
         ret = write_binary_file(cli.output_path, output_buf, crypto_len);
     }
@@ -308,18 +225,12 @@ int main(int argc, char *argv[])
 
     if (cli.output_path)
         printf("Wrote %zu bytes to '%s'.\n",
-               crypto_len + iv_out_len + tag_out_len, cli.output_path);
+               file_len ? file_len : crypto_len, cli.output_path);
 
     /* ---- For GCM, display the authentication tag ---- */
-    if (cli.mode == FCE_AES_GCM) {
-        printf("GCM authentication tag: ");
-        for (size_t i = 0; i < FCE_AES_GCM_TAG_SIZE; i++)
-            printf("%02x", gcm_tag[i]);
-        if (cli.dir == FCE_AES_ENCRYPT)
-            printf(" (embedded in output file)\n");
-        else
-            printf(" (extracted from input file)\n");
-    }
+    if (cli.mode == FCE_AES_GCM)
+        format_print_tag(gcm_tag, FCE_AES_GCM_TAG_SIZE,
+                         cli.dir == FCE_AES_ENCRYPT);
 
 out:
     free(key_buf);

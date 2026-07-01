@@ -52,6 +52,7 @@ TARGET := fce_aes_app
 SRCS := src/fce_aes_app.c \
         src/fce_aes_api.c \
         src/fce_aes_cli.c \
+        src/fce_aes_format.c \
         src/fce_aes_io.c \
         src/fce_aes_selftest.c
 OBJS := $(SRCS:.c=.o)

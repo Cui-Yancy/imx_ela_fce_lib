@@ -19,7 +19,7 @@
 
 #include "fce_aes_selftest.h"
 #include "fce_aes_api.h"
-#include "fce_aes_openssl.h"
+#include "aes_openssl.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -462,7 +462,7 @@ int run_selftest(void)
 
     printf("\n");
     printf("============================================\n");
-    printf("  FCE AES PRIME Self-Test + OpenSSL Cross-Verify\n");
+    printf("  PRIME FCE AES Self-Test + OpenSSL Cross-Verify\n");
     printf("============================================\n");
     printf("\n");
 

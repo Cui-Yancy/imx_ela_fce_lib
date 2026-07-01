@@ -2,8 +2,11 @@
 /*
  * Copyright 2026 NXP
  *
- * fce_aes_api.h — Public API for i.MX943 FCE AES operations via the PRIME
- *                 cryptographic hardware engine.
+ * fce_aes_api.h — Public API for i.MX943 PRIME FCE AES operations.
+ *
+ * The PRIME cryptographic hardware engine includes an AES crypto block
+ * (FCE).  This module provides the API to perform AES operations on
+ * the FCE block via the PRIME SE library.
  *
  * This module provides two tiers of API:
  *

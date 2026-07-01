@@ -2,7 +2,7 @@
 /*
  * Copyright 2026 NXP
  *
- * fce_aes_openssl.c — OpenSSL-based AES software implementation.
+ * aes_openssl.c — OpenSSL-based AES software implementation.
  *
  * Implements aes_openssl_operation() using the OpenSSL EVP API for all
  * four modes (ECB, CBC, CTR, GCM) and all three key sizes (128/192/256).
@@ -18,7 +18,7 @@
  * (NIST SP 800-38A initial counter value = 1).
  */
 
-#include "fce_aes_openssl.h"
+#include "aes_openssl.h"
 
 #include <openssl/evp.h>
 
@@ -26,11 +26,11 @@
 #include <string.h>
 
 /* ======================================================================
- * Cipher selection  (mode + key size → EVP_CIPHER)
+ * Cipher selection  (mode + key size -> EVP_CIPHER)
  * ====================================================================== */
 
 /**
- * cipher_for_mode — Return the OpenSSL EVP_CIPHER for a given mode + key size.
+ * cipher_for_mode -- Return the OpenSSL EVP_CIPHER for a given mode + key size.
  *
  * @param[in] mode    AES mode (ECB, CBC, CTR, GCM).
  * @param[in] key_len Key length in bytes (16, 24, or 32).
@@ -100,12 +100,10 @@ int aes_openssl_operation(struct aes_params *params)
 
     /* ---- CTR: build 16-byte counter block ----
      *
-     * The PRIME firmware expects a full 16-byte counter block for
-     * CTR mode.  OpenSSL's AES-CTR also expects a 16-byte IV.
-     *
-     * When the caller provides a 16-byte IV we use it directly as
-     * the initial counter block.  When a 12-byte nonce is provided we
-     * pad it with [0x00000001] per NIST SP 800-38A.
+     * OpenSSL's AES-CTR expects a 16-byte IV.  When the caller
+     * provides a 16-byte IV we use it directly as the initial
+     * counter block.  When a 12-byte nonce is provided we pad it
+     * with [0x00000001] per NIST SP 800-38A.
      */
     uint8_t ctr_iv[16];
     const uint8_t *iv = params->iv;
@@ -115,10 +113,10 @@ int aes_openssl_operation(struct aes_params *params)
             return -EINVAL;
 
         if (params->iv_len >= 16) {
-            /* Full 16-byte counter block — use as-is. */
+            /* Full 16-byte counter block -- use as-is. */
             memcpy(ctr_iv, iv, 16);
         } else {
-            /* 12-byte nonce — pad with initial counter = 1. */
+            /* 12-byte nonce -- pad with initial counter = 1. */
             memcpy(ctr_iv, iv, 12);
             ctr_iv[12] = 0x00;
             ctr_iv[13] = 0x00;
@@ -146,10 +144,9 @@ int aes_openssl_operation(struct aes_params *params)
 
     /* ---- ECB and CBC: PKCS#7 padding is enabled by default.
      *
-     * OpenSSL enables PKCS#7 padding by default, which matches our
-     * PRIME backend's software padding.  The encrypt path pads the
-     * plaintext to a multiple of 16 bytes; the decrypt path strips
-     * the padding automatically.
+     * OpenSSL enables PKCS#7 padding by default.  The encrypt path
+     * pads the plaintext to a multiple of 16 bytes; the decrypt
+     * path strips the padding automatically.
      */
 
     /* ---- GCM: process AAD and (for decrypt) set expected tag ---- */

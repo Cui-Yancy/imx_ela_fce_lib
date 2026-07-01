@@ -1,7 +1,8 @@
-# FCE AES PRIME Application for i.MX943
+# PRIME FCE AES Application for i.MX943
 
 A command-line tool and reusable C library for AES encryption and decryption
-using the **PRIME** cryptographic hardware engine on NXP i.MX943 processors.
+using the **PRIME** cryptographic hardware engine (its **FCE** AES block)
+on NXP i.MX943 processors.
 
 ## Features
 
@@ -16,7 +17,7 @@ using the **PRIME** cryptographic hardware engine on NXP i.MX943 processors.
 - **Dual backend**: PRIME hardware engine (default) or OpenSSL software crypto (`-s`)
 - **Cross-verification**: run the same key/IV/data through both backends to validate PRIME correctness
 - **Built-in self-test**: run with no arguments to verify all four modes
-  (round-trip + OpenSSL cross-verify)
+  (round-trip + cross-verify against OpenSSL)
 
 ## Directory Structure
 
@@ -25,23 +26,23 @@ fce_aes_app/
   Makefile          — Build system
   README.md         — This file
   include/          — Public API headers
-    fce_aes_api.h       Core PRIME AES API
+    fce_aes_api.h       Core PRIME FCE AES API
     fce_aes_cli.h       CLI argument parser
     fce_aes_format.h    On-disk file format (IV/tag layout)
     fce_aes_io.h        I/O utilities
-    fce_aes_openssl.h   OpenSSL software crypto backend
+    aes_openssl.h       OpenSSL software crypto backend
     fce_aes_selftest.h  Self-test runner
   src/              — Implementation files
     fce_aes_app.c       Main entry point
-    fce_aes_api.c       PRIME AES engine wrapper (core API)
+    fce_aes_api.c       PRIME FCE AES engine wrapper (core API)
     fce_aes_cli.c       Command-line argument parsing (getopt)
     fce_aes_format.c    On-disk file format (IV/tag layout)
     fce_aes_io.c        File and hex-string I/O utilities
-    fce_aes_openssl.c   OpenSSL AES implementation (EVP API)
+    aes_openssl.c       OpenSSL AES implementation (EVP API)
     fce_aes_selftest.c  Built-in test vectors and self-test runner
 ```
 
-Dependencies flow one direction: `main → {cli, io, openssl, api, selftest}`.
+Dependencies flow one direction: `main -> {cli, io, openssl, api, selftest}`.
 No circular dependencies between modules.
 
 ## Prerequisites

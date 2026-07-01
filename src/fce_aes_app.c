@@ -2,7 +2,7 @@
 /*
  * Copyright 2026 NXP
  *
- * fce_aes_app.c — i.MX943 FCE AES PRIME Application Entry Point.
+ * fce_aes_app.c — i.MX943 PRIME FCE AES Application Entry Point.
  *
  * Usage:
  *   fce_aes_app              — run built-in self-test
@@ -15,7 +15,7 @@
 #include "fce_aes_cli.h"
 #include "fce_aes_format.h"
 #include "fce_aes_io.h"
-#include "fce_aes_openssl.h"
+#include "aes_openssl.h"
 #include "fce_aes_selftest.h"
 
 #include <stdio.h>

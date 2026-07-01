@@ -2,23 +2,19 @@
 /*
  * Copyright 2026 NXP
  *
- * fce_aes_openssl.h — OpenSSL-based AES software implementation.
+ * aes_openssl.h — OpenSSL-based AES software implementation.
  *
  * Provides an aes_openssl_operation() function with the same interface as
  * aes_operation() (from fce_aes_api.h) but implemented using the OpenSSL
- * EVP API in software rather than the i.MX943 PRIME hardware engine.
+ * EVP API in software.  This is a standalone AES software backend,
+ * independent of the PRIME hardware engine.
  *
- * Purpose:
- *   Use this alongside the PRIME-based path to cross-verify correctness.
- *   Run the same key / IV / plaintext through both backends and compare
- *   ciphertext and (for GCM) authentication tags.
- *
- * Supported modes: ECB, CBC, CTR, GCM  (matching fce_aes_api.h)
+ * Supported modes: ECB, CBC, CTR, GCM
  * Key sizes:       16, 24, 32 bytes
  *
  * Padding:
- *   ECB and CBC use PKCS#7 padding (OpenSSL default) to match the
- *   PRIME backend behaviour — any plaintext length is accepted.
+ *   ECB and CBC use PKCS#7 padding (OpenSSL default) — any plaintext
+ *   length is accepted.
  *
  * CTR IV:
  *   CTR mode uses a 16-byte counter block (IV).  When a 12-byte nonce
@@ -26,8 +22,8 @@
  *   (standard NIST SP 800-38A initial counter value).
  */
 
-#ifndef FCE_AES_OPENSSL_H
-#define FCE_AES_OPENSSL_H
+#ifndef AES_OPENSSL_H
+#define AES_OPENSSL_H
 
 #include "fce_aes_api.h"
 
@@ -51,4 +47,4 @@ int aes_openssl_operation(struct aes_params *params);
 }
 #endif
 
-#endif /* FCE_AES_OPENSSL_H */
+#endif /* AES_OPENSSL_H */

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: BSD-3-Clause
 #
-# Makefile for fce_aes_app — i.MX943 FCE AES PRIME Application
+# Makefile for fce_aes_app -- i.MX943 PRIME FCE AES Application
 #
 # Source layout:
 #   include/    — public header files (.h)
@@ -54,7 +54,7 @@ SRCS := src/fce_aes_app.c \
         src/fce_aes_cli.c \
         src/fce_aes_format.c \
         src/fce_aes_io.c \
-        src/fce_aes_openssl.c \
+        src/aes_openssl.c \
         src/fce_aes_selftest.c
 OBJS := $(SRCS:.c=.o)
 

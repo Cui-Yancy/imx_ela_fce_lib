@@ -448,8 +448,37 @@ int aes_session_crypto(struct aes_session *sess, struct aes_params *params)
         return -EIO;
     }
 
+    /*
+     * Host-side pipeline check.
+     *
+     * The PRIME library's enqueue path may set op_status to CRYPTO_OP_FIFO_FULL
+     * (or another error) even when prime_process_ops returns 0.  This catches
+     * push-command failures (0xYY29) where the firmware never ran.
+     */
+    if (op.op_status != CRYPTO_OP_COMPLETED) {
+        return -EIO;
+    }
+
     /* ---- cache-clean-and-invalidate output after DMA ---- */
     data_cache_clean(data_buf, buf_data_len, 0);
+
+    /*
+     * Firmware status check.
+     *
+     * Per NXP convention the firmware writes 0xYYD6 into the status buffer's
+     * first byte to signal success.  Any other value (including the push-
+     * command error 0xYY29) means the operation failed at the firmware level.
+     *
+     * Invalidate the status buffer before reading because the firmware wrote
+     * it via DMA and the data cache may hold stale lines.
+     */
+    {
+        status_buf_t *fw_st = (status_buf_t *)op.crypto_status.virt_addr;
+        data_cache_clean((uint8_t *)fw_st, sizeof(status_buf_t), 0);
+        if (fw_st->status_code != 0xD6) {
+            return -EIO;
+        }
+    }
 
     /* ---- copy result back to caller, stripping padding for ECB/CBC decrypt ---- */
     if ((params->mode == FCE_AES_ECB || params->mode == FCE_AES_CBC) &&

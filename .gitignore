@@ -6,3 +6,6 @@ test_*
 compile_commands.json
 *.a
 *.so
+.claude/
+docs/
+analysis/

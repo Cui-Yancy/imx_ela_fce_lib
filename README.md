@@ -32,6 +32,7 @@ fce_aes_app/
     fce_aes_io.h        I/O utilities
     aes_openssl.h       OpenSSL software crypto backend
     fce_aes_selftest.h  Self-test runner
+    crypto_stream.h     Streaming encryption wrapper
   src/              — Implementation files
     fce_aes_app.c       Main entry point
     fce_aes_api.c       PRIME FCE AES engine wrapper (core API)
@@ -40,10 +41,16 @@ fce_aes_app/
     fce_aes_io.c        File and hex-string I/O utilities
     aes_openssl.c       OpenSSL AES implementation (EVP API)
     fce_aes_selftest.c  Built-in test vectors and self-test runner
+    crypto_stream.c     Streaming encryption wrapper
 ```
 
 Dependencies flow one direction: `main -> {cli, io, openssl, api, selftest}`.
 No circular dependencies between modules.
+
+In addition to the CLI binary, the Makefile also builds a static library
+`libfce_aes.a` containing the core crypto modules (fce_aes_api, aes_openssl,
+fce_aes_format, crypto_stream).  External projects link against this library
+without pulling in CLI/IO/selftest code.
 
 ## Prerequisites
 
@@ -89,6 +96,24 @@ make CROSS_COMPILE=aarch64-linux-gnu- \
 
 ```bash
 make DESTDIR=/path/to/rootfs install
+```
+
+### Build only the static library
+
+```bash
+# Both binary + library (default)
+make
+
+# Library only (for external consumers)
+make libfce_aes.a
+```
+
+The resulting `libfce_aes.a` can be linked into other projects:
+```makefile
+# In the consumer's Makefile
+CFLAGS  += -I/path/to/fce_aes_app/include
+LDFLAGS += -L/path/to/fce_aes_app
+LDLIBS  += -lfce_aes -lcrypto
 ```
 
 ## Usage
@@ -241,6 +266,67 @@ aes_session_crypto(&sess, &params2);
 
 aes_session_close(&sess);
 ```
+
+## Streaming API (crypto_stream)
+
+The `crypto_stream` module provides a higher-level wrapper that combines
+session management, IV generation, and wire-format assembly into a single
+per-frame encrypt call — ideal for streaming scenarios such as MJPEG-over-TCP.
+
+```c
+#include "crypto_stream.h"
+
+/* Create a crypto stream (opens PRIME session; falls back to OpenSSL) */
+struct crypto_stream *cs = crypto_stream_new(FCE_AES_CTR, key, key_len);
+
+/* Encrypt one frame — output is [IV][ciphertext][+GCM-tag] */
+uint8_t *enc;
+size_t   enc_len;
+int ret = crypto_stream_encrypt(cs, plaintext, plaintext_len,
+                                &enc, &enc_len);
+
+/* Send enc / enc_len over the wire, then free */
+send(client_fd, enc, enc_len, 0);
+crypto_stream_free_buf(enc);
+
+/* Cleanup when done */
+crypto_stream_free(cs);
+```
+
+### Wire format per mode
+
+| Mode | IV length | Tag length | Wire layout |
+|------|-----------|------------|-------------|
+| ECB  | 0         | 0          | `[ciphertext]` |
+| CBC  | 16        | 0          | `[IV][ciphertext]` |
+| CTR  | 16        | 0          | `[IV][ciphertext]` |
+| GCM  | 12        | 16         | `[nonce][ciphertext][tag]` |
+
+The receiver side (e.g. Python client) parses the IV from the prefix and
+(for GCM) the tag from the suffix before decrypting.
+
+### Integration example: MJPEG-over-TCP server
+
+`crypto_stream` is intentionally decoupled from V4L2 / TCP / frame headers.
+The server's main loop only adds one branch:
+
+```c
+if (cs) {
+    crypto_stream_encrypt(cs, jpeg, jpeg_size, &enc_buf, &enc_size);
+    header.flags     |= FRAME_FLAG_ENCRYPTED;
+    header.jpeg_size  = enc_size;
+    payload           = enc_buf;
+} else {
+    /* no encryption — send raw JPEG as before */
+    header.jpeg_size  = jpeg_size;
+    payload           = jpeg;
+}
+send_all(client_fd, &header, sizeof(header));
+send_all(client_fd, payload, header.jpeg_size);
+if (cs) crypto_stream_free_buf(enc_buf);
+```
+
+See `../mjpeg/mjpeg_server/` for the full implementation.
 
 ## Notes
 

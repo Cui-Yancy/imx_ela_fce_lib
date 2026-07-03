@@ -56,14 +56,19 @@ AR ?= ar
 # Application name
 TARGET := fce_aes_app
 
-# Source files (under src/) and corresponding object files
+# Static library (subset of objects for external consumers)
+LIB_TARGET := libfce_aes.a
+LIB_OBJS  := src/fce_aes_api.o src/aes_openssl.o src/fce_aes_format.o src/crypto_stream.o
+
+# All source files (under src/) and corresponding object files
 SRCS := src/fce_aes_app.c \
         src/fce_aes_api.c \
         src/fce_aes_cli.c \
         src/fce_aes_format.c \
         src/fce_aes_io.c \
         src/aes_openssl.c \
-        src/fce_aes_selftest.c
+        src/fce_aes_selftest.c \
+        src/crypto_stream.c
 OBJS := $(SRCS:.c=.o)
 
 # ------------------------------------------------------------------
@@ -101,16 +106,19 @@ endif
 
 .PHONY: all clean install
 
-all: $(TARGET)
+all: $(TARGET) $(LIB_TARGET)
 
 $(TARGET): $(OBJS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+$(LIB_TARGET): $(LIB_OBJS)
+	$(AR) rcs $@ $^
 
 src/%.o: src/%.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 clean:
-	rm -f $(OBJS) $(TARGET)
+	rm -f $(OBJS) $(TARGET) $(LIB_TARGET)
 
 install: $(TARGET)
 	install -d $(DESTDIR)$(BINDIR)

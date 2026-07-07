@@ -6,13 +6,13 @@
  *
  * Parses command-line arguments for the FCE AES application and produces
  * a structured descriptor (fce_aes_cli_args) that the main program can
- * use to set up an aes_operation call.
+ * use to set up fce_aes_* operations.
  */
 
 #ifndef FCE_AES_CLI_H
 #define FCE_AES_CLI_H
 
-#include "fce_aes_api.h"
+#include "fce_aes_session.h"
 
 #ifdef __cplusplus
 extern "C" {

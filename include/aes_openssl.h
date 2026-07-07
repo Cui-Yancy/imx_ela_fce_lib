@@ -5,7 +5,8 @@
  * aes_openssl.h — OpenSSL-based AES software implementation.
  *
  * Provides an aes_openssl_operation() function with the same interface as
- * aes_operation() (from fce_aes_api.h) but implemented using the OpenSSL
+ * the low-level aes_session_crypto() / struct aes_params convention
+ * (from fce_aes_session.h) but implemented using the OpenSSL
  * EVP API in software.  This is a standalone AES software backend,
  * independent of the PRIME hardware engine.
  *
@@ -25,7 +26,7 @@
 #ifndef AES_OPENSSL_H
 #define AES_OPENSSL_H
 
-#include "fce_aes_api.h"
+#include "fce_aes_session.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -35,7 +36,7 @@ extern "C" {
  * aes_openssl_operation — AES encrypt / decrypt using OpenSSL (software).
  *
  * Same semantics as aes_operation() from the PRIME API.  @p params
- * is set up identically (see struct aes_params in fce_aes_api.h).
+ * is set up identically (see struct aes_params in fce_aes_session.h).
  *
  * @param[in,out] params  Operation parameters.
  *

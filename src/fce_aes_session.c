@@ -2,9 +2,9 @@
 /*
  * Copyright 2026 NXP
  *
- * fce_aes_api.c — PRIME AES engine API implementation.
+ * fce_aes_session.c — PRIME AES session API implementation.
  *
- * This file translates the public fce_aes_api.h interface into calls to the
+ * This file translates the public fce_aes_session.h interface into calls to the
  * NXP PRIME SE library.  It manages:
  *   - PRIME service session lifecycle (open / close)
  *   - AES key loading into hardware key slots
@@ -28,7 +28,7 @@
  *   - "dc civac"  — clean AND invalidate
  */
 
-#include "fce_aes_api.h"
+#include "fce_aes_session.h"
 
 #include <errno.h>
 #include <stdint.h>
@@ -539,35 +539,6 @@ void aes_session_close(struct aes_session *sess)
 }
 
 /* ======================================================================
- * One-shot convenience API
- * ====================================================================== */
-
-int aes_operation(struct aes_params *params)
-{
-    struct aes_session sess;
-    int ret;
-
-    if (!params)
-        return -EINVAL;
-
-    memset(&sess, 0, sizeof(sess));
-
-    ret = aes_session_open(&sess);
-    if (ret)
-        return ret;
-
-    ret = aes_session_load_key(&sess, params->key, params->key_len);
-    if (ret)
-        goto out_close;
-
-    ret = aes_session_crypto(&sess, params);
-
-out_close:
-    aes_session_close(&sess);
-    return ret;
-}
-
-/* ======================================================================
  * PRIME build — error string
  * ====================================================================== */
 
@@ -609,12 +580,6 @@ void aes_session_close(struct aes_session *sess)
     /* Idempotent: just clear the struct. */
     if (sess)
         memset(sess, 0, sizeof(*sess));
-}
-
-int aes_operation(struct aes_params *params)
-{
-    (void)params;
-    return -ENODEV;
 }
 
 #endif /* USE_PRIME */

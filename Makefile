@@ -58,17 +58,17 @@ TARGET := fce_aes_app
 
 # Static library (subset of objects for external consumers)
 LIB_TARGET := libfce_aes.a
-LIB_OBJS  := src/fce_aes_api.o src/aes_openssl.o src/fce_aes_format.o src/crypto_stream.o
+LIB_OBJS  := src/fce_aes_session.o src/aes_openssl.o src/fce_aes_format.o src/fce_aes.o
 
 # All source files (under src/) and corresponding object files
 SRCS := src/fce_aes_app.c \
-        src/fce_aes_api.c \
+        src/fce_aes_session.c \
+        src/fce_aes.c \
         src/fce_aes_cli.c \
         src/fce_aes_format.c \
         src/fce_aes_io.c \
         src/aes_openssl.c \
-        src/fce_aes_selftest.c \
-        src/crypto_stream.c
+        src/fce_aes_selftest.c
 OBJS := $(SRCS:.c=.o)
 
 # ------------------------------------------------------------------

@@ -2,23 +2,22 @@
 /*
  * Copyright 2026 NXP
  *
- * fce_aes_api.h — Public API for i.MX943 PRIME FCE AES operations.
+ * fce_aes_session.h — Low-level PRIME AES session API.
  *
  * The PRIME cryptographic hardware engine includes an AES crypto block
  * (FCE).  This module provides the API to perform AES operations on
  * the FCE block via the PRIME SE library.
  *
- * This module provides two tiers of API:
+ * This module provides the low-level session-based API (aes_session_*):
  *
- *   1. One-shot convenience API (aes_operation):
- *      Opens a PRIME service session, loads the key, performs a single
- *      encrypt/decrypt operation, then tears down the session.
+ *   For repeated operations with the same key.  The caller opens a session
+ *   once, loads a key, performs any number of crypto operations, then
+ *   closes the session.  This avoids the overhead of allocating shared
+ *   memory and re-loading the key on every call.
  *
- *   2. Session-based API (aes_session_*):
- *      For repeated operations with the same key.  The caller opens a session
- *      once, loads a key, performs any number of crypto operations, then
- *      closes the session.  This avoids the overhead of allocating shared
- *      memory and re-loading the key on every call.
+ * For the recommended high-level unified API (init → encrypt/decrypt → free)
+ * with automatic PRIME/OpenSSL fallback and explicit IV control, see the
+ * companion header <fce_aes.h>.
  *
  * All supported AES modes:
  *   - ECB  (Electronic Codebook)         — no IV required
@@ -208,27 +207,6 @@ int aes_session_crypto(struct aes_session *sess, struct aes_params *params);
  * @param[in,out] sess Session handle to close.
  */
 void aes_session_close(struct aes_session *sess);
-
-/* ---------------------------------------------------------------------------
- * One-shot convenience API
- * --------------------------------------------------------------------------- */
-
-/**
- * aes_operation — Open session, load key, perform one crypto op, close
- *                  session.
- *
- * This is a convenience wrapper that internally calls:
- *   aes_session_open()   →   aes_session_load_key()   →
- *   aes_session_crypto()   →   aes_session_close()
- *
- * Use this when you only need a single encrypt or decrypt call.  For
- * repeated operations prefer the session-based API for better performance.
- *
- * @param[in,out] params Operation parameters (see struct aes_params).
- *
- * @return 0 on success, or a negative errno value on failure.
- */
-int aes_operation(struct aes_params *params);
 
 /* ---------------------------------------------------------------------------
  * Error reporting

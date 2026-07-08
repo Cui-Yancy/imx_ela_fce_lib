@@ -62,13 +62,13 @@ LIB_OBJS  := src/fce_aes_session.o src/aes_openssl.o src/fce_aes_format.o src/fc
 
 # All source files (under src/) and corresponding object files
 SRCS := src/fce_aes_app.c \
-        src/fce_aes_session.c \
-        src/fce_aes.c \
-        src/fce_aes_cli.c \
-        src/fce_aes_format.c \
-        src/fce_aes_io.c \
-        src/aes_openssl.c \
-        src/fce_aes_selftest.c
+	src/fce_aes_session.c \
+	src/fce_aes.c \
+	src/fce_aes_cli.c \
+	src/fce_aes_format.c \
+	src/fce_aes_io.c \
+	src/aes_openssl.c \
+	src/fce_aes_selftest.c
 OBJS := $(SRCS:.c=.o)
 
 # ------------------------------------------------------------------
@@ -77,7 +77,7 @@ OBJS := $(SRCS:.c=.o)
 
 # Include paths: local headers first.
 CFLAGS := -O2 -Wall -Werror \
-          -Iinclude
+	  -Iinclude
 
 # Base link: OpenSSL crypto library (always required).
 LDLIBS  := -lcrypto
@@ -86,8 +86,8 @@ LDFLAGS :=
 # PRIME-specific: include paths, library, and compile-time define.
 ifeq ($(USE_PRIME),1)
 CFLAGS  += -DUSE_PRIME \
-           -I$(ELE_DIR)/include \
-           -I$(ELE_DIR)/include/prime
+	   -I$(ELE_DIR)/include \
+	   -I$(ELE_DIR)/include/prime
 LDFLAGS += -L$(ELE_DIR)
 LDLIBS  += -lprime
 endif
@@ -109,13 +109,16 @@ endif
 all: $(TARGET) $(LIB_TARGET)
 
 $(TARGET): $(OBJS)
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+	@echo "Linking $@ ..."
+	@$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 $(LIB_TARGET): $(LIB_OBJS)
-	$(AR) rcs $@ $^
+	@echo "Creating $@ ..."
+	@$(AR) rcs $@ $^
 
 src/%.o: src/%.c
-	$(CC) $(CFLAGS) -c -o $@ $<
+	@echo "CC $@ ..."
+	@$(CC) $(CFLAGS) -c -o $@ $<
 
 clean:
 	rm -f $(OBJS) $(TARGET) $(LIB_TARGET)

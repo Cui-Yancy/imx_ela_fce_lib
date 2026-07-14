@@ -39,7 +39,7 @@
 USE_PRIME          ?= 1
 CROSS_COMPILE      ?=
 SDKTARGETSYSROOT   ?=
-ELE_DIR            ?= ../ele
+ELE_DIR            ?= ../imx-secure-enclave
 DESTDIR            ?=
 BINDIR             ?= /usr/bin
 

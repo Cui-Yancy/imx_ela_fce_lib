@@ -12,7 +12,7 @@
 #ifndef FCE_AES_CLI_H
 #define FCE_AES_CLI_H
 
-#include "fce_aes_session.h"
+#include "internal/fce_aes_session.h"
 
 #ifdef __cplusplus
 extern "C" {

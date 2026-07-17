@@ -28,7 +28,7 @@
  *   - "dc civac"  — clean AND invalidate
  */
 
-#include "fce_aes_session.h"
+#include "internal/fce_aes_session.h"
 
 #include <errno.h>
 #include <stdint.h>

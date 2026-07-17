@@ -15,11 +15,11 @@
  * See the help text (-h) for full option descriptions.
  */
 
-#include "fce_aes.h"
+#include "imx_aes.h"
 #include "fce_aes_cli.h"
-#include "fce_aes_format.h"
-#include "fce_aes_io.h"
-#include "fce_aes_selftest.h"
+#include "internal/fce_aes_format.h"
+#include "imx_util.h"
+#include "internal/fce_aes_selftest.h"
 
 #include <stdio.h>
 #include <stdlib.h>

@@ -2,7 +2,7 @@
 /*
  * Copyright 2026 NXP
  *
- * ele_pkcs11_rsa.h — ELE PKCS#11 RSA Sign and Verify API.
+ * imx_rsa.h — ELE PKCS#11 RSA Sign and Verify API.
  *
  * Provides RSA signing and signature verification using the PKCS#11
  * interface (Cryptoki) backed by the NXP i.MX ELE cryptographic hardware.
@@ -35,7 +35,7 @@
  *
  * Usage example (sign):
  *
- *   #include "ele_pkcs11_rsa.h"
+ *   #include "imx_rsa.h"
  *
  *   uint8_t key_id[] = { 0x02 };
  *   struct ele_pkcs11_rsa *ctx =
@@ -66,8 +66,8 @@
  *   ele_pkcs11_rsa_free(ctx);
  */
 
-#ifndef ELE_PKCS11_RSA_H
-#define ELE_PKCS11_RSA_H
+#ifndef IMX_RSA_H
+#define IMX_RSA_H
 
 #include <stddef.h>
 #include <stdint.h>
@@ -263,4 +263,4 @@ const char *ele_pkcs11_rsa_strerror(int err);
 }
 #endif
 
-#endif /* ELE_PKCS11_RSA_H */
+#endif /* IMX_RSA_H */

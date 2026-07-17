@@ -14,7 +14,7 @@
 #ifndef FCE_AES_FORMAT_H
 #define FCE_AES_FORMAT_H
 
-#include "fce_aes_session.h"
+#include "internal/fce_aes_session.h"
 
 #include <stddef.h>
 #include <stdint.h>

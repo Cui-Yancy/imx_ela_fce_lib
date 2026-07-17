@@ -2,7 +2,7 @@
 /*
  * Copyright 2026 NXP
  *
- * fce_aes.h — Unified FCE AES API.
+ * imx_aes.h — Unified FCE AES API.
  *
  * This is the single public API for AES encryption/decryption using the
  * i.MX943 PRIME FCE hardware (with automatic fallback to OpenSSL software
@@ -47,10 +47,10 @@
  * failure.  Use fce_aes_strerror() for a human-readable description.
  */
 
-#ifndef FCE_AES_H
-#define FCE_AES_H
+#ifndef IMX_AES_H
+#define IMX_AES_H
 
-#include "fce_aes_session.h"
+#include "internal/fce_aes_session.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -245,4 +245,4 @@ const char *fce_aes_strerror(int err);
 }
 #endif
 
-#endif /* FCE_AES_H */
+#endif /* IMX_AES_H */

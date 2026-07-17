@@ -2,7 +2,7 @@
 /*
  * Copyright 2026 NXP
  *
- * ele_pkcs11_rsa.c — ELE PKCS#11 RSA Sign and Verify API implementation.
+ * ele_rsa.c — ELE PKCS#11 RSA Sign and Verify API implementation.
  *
  * Implements PKCS#11 RSA signing and verification with dynamic module
  * loading:
@@ -22,7 +22,7 @@
  * ele_pkcs11_rsa_strerror().
  */
 
-#include "ele_pkcs11_rsa.h"
+#include "imx_rsa.h"
 #include <pkcs11.h>
 
 #include <dlfcn.h>

@@ -30,7 +30,7 @@ openssl dgst -sha256 -verify rsa2k_public_key.pem -signature signature.bin \
     -sigopt rsa_pss_saltlen:32 \
     data_test.bin
 
-timeout 5 ./ele_pkcs11_rsa_app -S -i data_test.bin -o signature.bin -I 02 -P 111
+timeout 5 ./ele_rsa_app -S -i data_test.bin -o signature.bin -I 02 -P 111
 
 openssl dgst -sha256 -verify rsa2k_public_key.pem -signature signature.bin \
     -sigopt rsa_padding_mode:pss \
@@ -39,7 +39,7 @@ openssl dgst -sha256 -verify rsa2k_public_key.pem -signature signature.bin \
 
 # === Positive test: verify app's signature with app ===
 echo "--- Test: Verify with app (positive) ---"
-./ele_pkcs11_rsa_app -V -i data_test.bin -s signature.bin -I 02 -P 111 -q
+./ele_rsa_app -V -i data_test.bin -s signature.bin -I 02 -P 111 -q
 if [ $? -ne 0 ]; then
     echo "FAIL: App verification of app signature failed!"
     exit 1
@@ -50,7 +50,7 @@ echo "PASS: App verification OK"
 echo "--- Test: Verify with corrupted data (negative) ---"
 cp data_test.bin data_test_corrupt.bin
 echo "X" >> data_test_corrupt.bin
-./ele_pkcs11_rsa_app -V -i data_test_corrupt.bin -s signature.bin -I 02 -P 111 -q
+./ele_rsa_app -V -i data_test_corrupt.bin -s signature.bin -I 02 -P 111 -q
 if [ $? -eq 0 ]; then
     echo "FAIL: App verification should have failed with corrupted data!"
     exit 1
@@ -68,7 +68,7 @@ pkcs11-tool --module $MODULE_PKCS11 \
     --input-file data_test.bin \
     --output-file signature_tool.bin
 
-./ele_pkcs11_rsa_app -V -i data_test.bin -s signature_tool.bin -I 02 -P 111 -q
+./ele_rsa_app -V -i data_test.bin -s signature_tool.bin -I 02 -P 111 -q
 if [ $? -ne 0 ]; then
     echo "FAIL: App verification of pkcs11-tool signature failed!"
     exit 1

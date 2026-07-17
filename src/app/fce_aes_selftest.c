@@ -15,8 +15,8 @@
  * GCM additionally verifies that the authentication tag is non-zero.
  */
 
-#include "fce_aes_selftest.h"
-#include "fce_aes.h"
+#include "internal/fce_aes_selftest.h"
+#include "imx_aes.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -308,14 +308,14 @@ static int test_cross(enum fce_aes_mode mode,
                           prime_ct, prime_ct_len,
                           &dec_by_ossl, &dec_by_ossl_len);
     if (ret) {
-        printf("  %s cross: PRIME→OpenSSL decrypt FAILED (error: %s)\n",
+        printf("  %s cross: PRIME->OpenSSL decrypt FAILED (error: %s)\n",
                mode_name, fce_aes_strerror(ret));
         goto out;
     }
 
     if (dec_by_ossl_len != pt_len ||
         memcmp(dec_by_ossl, plaintext, pt_len) != 0) {
-        printf("  %s cross: PRIME→OpenSSL data mismatch\n", mode_name);
+        printf("  %s cross: PRIME->OpenSSL data mismatch\n", mode_name);
         ret = -1;
         goto out;
     }
@@ -325,14 +325,14 @@ static int test_cross(enum fce_aes_mode mode,
                           ossl_ct, ossl_ct_len,
                           &dec_by_prime, &dec_by_prime_len);
     if (ret) {
-        printf("  %s cross: OpenSSL→PRIME decrypt FAILED (error: %s)\n",
+        printf("  %s cross: OpenSSL->PRIME decrypt FAILED (error: %s)\n",
                mode_name, fce_aes_strerror(ret));
         goto out;
     }
 
     if (dec_by_prime_len != pt_len ||
         memcmp(dec_by_prime, plaintext, pt_len) != 0) {
-        printf("  %s cross: OpenSSL→PRIME data mismatch\n", mode_name);
+        printf("  %s cross: OpenSSL->PRIME data mismatch\n", mode_name);
         ret = -1;
         goto out;
     }

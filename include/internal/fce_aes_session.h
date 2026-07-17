@@ -17,7 +17,7 @@
  *
  * For the recommended high-level unified API (init → encrypt/decrypt → free)
  * with automatic PRIME/OpenSSL fallback and explicit IV control, see the
- * companion header <fce_aes.h>.
+ * companion header <imx_aes.h>.
  *
  * All supported AES modes:
  *   - ECB  (Electronic Codebook)         — no IV required

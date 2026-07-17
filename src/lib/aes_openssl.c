@@ -18,7 +18,7 @@
  * (NIST SP 800-38A initial counter value = 1).
  */
 
-#include "aes_openssl.h"
+#include "internal/aes_openssl.h"
 
 #include <openssl/evp.h>
 

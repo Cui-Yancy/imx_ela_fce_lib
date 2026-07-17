@@ -2,17 +2,17 @@
 /*
  * Copyright 2026 NXP
  *
- * ele_pkcs11_rsa_app.c — ELE PKCS#11 RSA CLI Tool (Sign / Verify).
+ * ele_rsa_app.c — ELE PKCS#11 RSA CLI Tool (Sign / Verify).
  *
  * A command-line utility for RSA signing and signature verification using
  * the i.MX ELE hardware via the PKCS#11 interface.
  *
  * Usage:
- *   ele_pkcs11_rsa_app -S -i <input_file> -I <key_id_hex> [-o <output_file>]
- *                       [-M <module_path>] [-P <pin>] [-h] [-q]
+ *   ele_rsa_app -S -i <input_file> -I <key_id_hex> [-o <output_file>]
+ *               [-M <module_path>] [-P <pin>] [-h] [-q]
  *
- *   ele_pkcs11_rsa_app -V -i <input_file> -s <sig_file> -I <key_id_hex>
- *                       [-M <module_path>] [-P <pin>] [-h] [-q]
+ *   ele_rsa_app -V -i <input_file> -s <sig_file> -I <key_id_hex>
+ *               [-M <module_path>] [-P <pin>] [-h] [-q]
  *
  * The key ID is specified as a hex string (e.g. -I 02 for key 0x02).
  * Sign mode (-S): produces a signature using SHA256-RSA-PKCS-PSS.
@@ -20,12 +20,12 @@
  * One of -S or -V must be specified.
  *
  * Depends on:
- *   - fce_aes_io.h      for read_binary_file / write_binary_file / hexstr_to_bytes
- *   - ele_pkcs11_rsa.h  for the PKCS#11 RSA API
+ *   - imx_util.h      for read_binary_file / write_binary_file / hexstr_to_bytes
+ *   - imx_rsa.h       for the PKCS#11 RSA API
  */
 
-#include "ele_pkcs11_rsa.h"
-#include "fce_aes_io.h"
+#include "imx_rsa.h"
+#include "imx_util.h"
 
 #include <stdio.h>
 #include <stdlib.h>

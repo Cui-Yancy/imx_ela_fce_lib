@@ -14,7 +14,7 @@
  *   GCM:  [12-byte IV][ciphertext][16-byte tag]
  */
 
-#include "fce_aes_format.h"
+#include "internal/fce_aes_format.h"
 
 #include <errno.h>
 #include <stdio.h>

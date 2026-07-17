@@ -16,9 +16,9 @@
  *   4. Any other PRIME error causes init to fail.
  */
 
-#include "fce_aes.h"
-#include "aes_openssl.h"
-#include "fce_aes_format.h"
+#include "imx_aes.h"
+#include "internal/aes_openssl.h"
+#include "internal/fce_aes_format.h"
 
 #include <errno.h>
 #include <stdlib.h>

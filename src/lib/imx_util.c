@@ -2,13 +2,13 @@
 /*
  * Copyright 2026 NXP
  *
- * fce_aes_io.c — I/O utility implementation.
+ * imx_util.c — I/O utility implementation.
  *
  * Provides binary file I/O, hexadecimal string parsing, and a combined
  * loader that accepts key/IV data from either a hex string or a file.
  */
 
-#include "fce_aes_io.h"
+#include "imx_util.h"
 
 #include <ctype.h>
 #include <errno.h>

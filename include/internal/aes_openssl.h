@@ -26,7 +26,7 @@
 #ifndef AES_OPENSSL_H
 #define AES_OPENSSL_H
 
-#include "fce_aes_session.h"
+#include "internal/fce_aes_session.h"
 
 #ifdef __cplusplus
 extern "C" {

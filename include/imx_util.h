@@ -2,7 +2,7 @@
 /*
  * Copyright 2026 NXP
  *
- * fce_aes_io.h — I/O utility declarations for the FCE AES application.
+ * imx_util.h — I/O utility declarations.
  *
  * Provides helpers for:
  *   - Reading / writing binary files
@@ -10,8 +10,8 @@
  *   - Loading a key or IV from either a hex string or a binary file
  */
 
-#ifndef FCE_AES_IO_H
-#define FCE_AES_IO_H
+#ifndef IMX_UTIL_H
+#define IMX_UTIL_H
 
 #include <stddef.h>
 #include <stdint.h>
@@ -89,4 +89,4 @@ int load_key_or_iv(const char *src, int is_file,
 }
 #endif
 
-#endif /* FCE_AES_IO_H */
+#endif /* IMX_UTIL_H */

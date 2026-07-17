@@ -1,12 +1,19 @@
 # SPDX-License-Identifier: BSD-3-Clause
 #
-# Makefile for fce_aes_app -- i.MX943 PRIME FCE AES Application
+# Makefile for imx_ela_fce_lib — i.MX Security Library
+#
+# Provides:
+#   libimx_security.a  — Static library with FCE AES + ELE RSA APIs
+#   fce_aes_app        — CLI test tool for FCE AES encrypt/decrypt
+#   ele_rsa_app        — CLI test tool for ELE RSA sign/verify
 #
 # Source layout:
-#   include/    — public header files (.h)
-#   src/        — implementation files (.c)
+#   include/            — Public API headers
+#   include/internal/   — Internal/private headers
+#   src/lib/            — Library implementation source files
+#   src/app/            — CLI application source files
 #
-# Cross-compilation (choose one):
+# Cross-compilation:
 #
 #   a) Yocto SDK (sourced environment):
 #        source /opt/fsl-imx-xwayland/6.18-whinlatter/environment-setup-armv8a-poky-linux
@@ -32,7 +39,7 @@
 #                   Not needed when using a Yocto SDK environment.
 # SDKTARGETSYSROOT  Yocto SDK sysroot path (set --sysroot for cross builds).
 # ELE_DIR           Path to the NXP ELE SE library source tree.
-#                   Default: ../ele
+#                   Default: ../imx-secure-enclave
 # DESTDIR           Installation prefix for 'make install'.
 # BINDIR            Binary installation directory (within DESTDIR).
 
@@ -53,99 +60,112 @@ endif
 CC ?= gcc
 AR ?= ar
 
-# Application name
-TARGET := fce_aes_app
+# ------------------------------------------------------------------
+# Targets
+# ------------------------------------------------------------------
 
-# ELE PKCS#11 RSA Sign/Verify target
-ELE_PKCS11_RSA_TARGET := ele_pkcs11_rsa_app
+LIB_TARGET := libimx_security.a
+AES_TARGET := fce_aes_app
+RSA_TARGET := ele_rsa_app
 
-# Static library (subset of objects for external consumers)
-LIB_TARGET := libfce_aes.a
-LIB_OBJS  := src/fce_aes_session.o src/aes_openssl.o src/fce_aes_format.o src/fce_aes.o
+# Library sources (under src/lib/)
+LIB_SRCS := src/lib/fce_aes.c \
+            src/lib/fce_aes_session.c \
+            src/lib/fce_aes_format.c \
+            src/lib/aes_openssl.c \
+            src/lib/ele_rsa.c \
+            src/lib/imx_util.c
+LIB_OBJS := $(LIB_SRCS:.c=.o)
 
-# All source files (under src/) and corresponding object files
-SRCS := src/fce_aes_app.c \
-	src/fce_aes_session.c \
-	src/fce_aes.c \
-	src/fce_aes_cli.c \
-	src/fce_aes_format.c \
-	src/fce_aes_io.c \
-	src/aes_openssl.c \
-	src/fce_aes_selftest.c
-OBJS := $(SRCS:.c=.o)
+# AES app sources (under src/app/)
+AES_APP_SRCS := src/app/fce_aes_app.c \
+                src/app/fce_aes_cli.c \
+                src/app/fce_aes_selftest.c
+AES_APP_OBJS := $(AES_APP_SRCS:.c=.o)
 
-# ELE PKCS#11 RSA source files (separate from the main AES app)
-ELE_PKCS11_RSA_SRCS := src/ele_pkcs11_rsa.c \
-                        src/ele_pkcs11_rsa_app.c
-ELE_PKCS11_RSA_OBJS := $(ELE_PKCS11_RSA_SRCS:.c=.o)
+# RSA app sources (under src/app/)
+RSA_APP_SRCS := src/app/ele_rsa_app.c
+RSA_APP_OBJS := $(RSA_APP_SRCS:.c=.o)
 
 # ------------------------------------------------------------------
 # Compiler and linker flags
 # ------------------------------------------------------------------
 
-# Include paths: local headers first.
-CFLAGS := -O2 -Wall -Werror \
-	  -Iinclude
+# Base CFLAGS: include paths for public and internal headers.
+BASE_CFLAGS := -O2 -Wall -Werror -Iinclude
 
-# ELE PKCS#11 RSA object flags — no PRIME/OpenSSL dependency.
-ELE_PKCS11_RSA_CFLAGS := -O0 -g -Wall \
-                          -Iinclude
+# Library CFLAGS: base + PRIME-specific (if enabled).
+CFLAGS := $(BASE_CFLAGS)
 
-# Base link: OpenSSL crypto library (always required).
+# AES app CFLAGS: base + PRIME + app include path for fce_aes_cli.h.
+AES_CFLAGS := $(BASE_CFLAGS) -Isrc/app
+
+# RSA app CFLAGS: same as app (for consistency, though doesn't use PRIME).
+RSA_CFLAGS := $(BASE_CFLAGS)
+
+# Base link: OpenSSL crypto library (required for AES software backend).
 LDLIBS  := -lcrypto -ldl
-ELE_PKCS11_RSA_LDLIBS := -ldl
-LDFLAGS :=
 
 # PRIME-specific: include paths, library, and compile-time define.
 ifeq ($(USE_PRIME),1)
-CFLAGS  += -DUSE_PRIME \
-	   -I$(ELE_DIR)/include \
-	   -I$(ELE_DIR)/include/prime
-LDFLAGS += -L$(ELE_DIR)
-LDLIBS  += -lprime
+CFLAGS     += -DUSE_PRIME \
+              -I$(ELE_DIR)/include \
+              -I$(ELE_DIR)/include/prime
+AES_CFLAGS += -DUSE_PRIME
+LDFLAGS    += -L$(ELE_DIR)
+LDLIBS     += -lprime
 endif
 
 # When SDKTARGETSYSROOT is set, pass --sysroot so the compiler and linker
-# find system headers and libraries under the sysroot.  The explicit
-# -L$(ELE_DIR) above is a host path unaffected by --sysroot.
+# find system headers and libraries under the sysroot.
 ifneq ($(SDKTARGETSYSROOT),)
-CFLAGS  += --sysroot=$(SDKTARGETSYSROOT)
-ELE_PKCS11_RSA_CFLAGS += --sysroot=$(SDKTARGETSYSROOT)
-LDFLAGS += --sysroot=$(SDKTARGETSYSROOT)
+CFLAGS     += --sysroot=$(SDKTARGETSYSROOT)
+AES_CFLAGS += --sysroot=$(SDKTARGETSYSROOT)
+RSA_CFLAGS += --sysroot=$(SDKTARGETSYSROOT)
+LDFLAGS    += --sysroot=$(SDKTARGETSYSROOT)
 endif
 
 # ------------------------------------------------------------------
-# Targets
+# Rules
 # ------------------------------------------------------------------
 
 .PHONY: all clean install
 
-all: $(TARGET) $(LIB_TARGET) $(ELE_PKCS11_RSA_TARGET)
+all: $(LIB_TARGET) $(AES_TARGET) $(RSA_TARGET)
 
-$(TARGET): $(OBJS)
-	@echo "Linking $@ ..."
-	@$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
-
+# Static library: archive all library objects.
 $(LIB_TARGET): $(LIB_OBJS)
 	@echo "Creating $@ ..."
 	@$(AR) rcs $@ $^
 
-$(ELE_PKCS11_RSA_TARGET): $(ELE_PKCS11_RSA_OBJS) src/fce_aes_io.o
+# AES application: link app objects with the library.
+$(AES_TARGET): $(AES_APP_OBJS) $(LIB_TARGET)
 	@echo "Linking $@ ..."
-	@$(CC) $(ELE_PKCS11_RSA_CFLAGS) $(LDFLAGS) -o $@ $^ $(ELE_PKCS11_RSA_LDLIBS)
+	@$(CC) $(AES_CFLAGS) $(LDFLAGS) -o $@ $(AES_APP_OBJS) \
+		-L. -limx_security $(LDLIBS)
 
-# ELE PKCS#11 RSA objects use their own CFLAGS (no PRIME/OpenSSL).
-src/ele_pkcs11_rsa.o src/ele_pkcs11_rsa_app.o: CFLAGS := $(ELE_PKCS11_RSA_CFLAGS)
+# RSA application: link app object with the library (no OpenSSL needed).
+$(RSA_TARGET): $(RSA_APP_OBJS) $(LIB_TARGET)
+	@echo "Linking $@ ..."
+	@$(CC) $(RSA_CFLAGS) $(LDFLAGS) -o $@ $(RSA_APP_OBJS) \
+		-L. -limx_security -ldl
 
-src/%.o: src/%.c
+# Pattern rule: compile library sources.
+src/lib/%.o: src/lib/%.c
 	@echo "CC $@ ..."
 	@$(CC) $(CFLAGS) -c -o $@ $<
 
-clean:
-	rm -f $(OBJS) $(TARGET) $(LIB_TARGET) \
-	      $(ELE_PKCS11_RSA_OBJS) $(ELE_PKCS11_RSA_TARGET)
+# Pattern rule: compile AES app sources.
+src/app/%.o: src/app/%.c
+	@echo "CC $@ ..."
+	@$(CC) $(AES_CFLAGS) -c -o $@ $<
 
-install: $(TARGET) $(ELE_PKCS11_RSA_TARGET)
+clean:
+	@echo "Cleaning ..."
+	rm -f $(LIB_OBJS) $(AES_APP_OBJS) $(RSA_APP_OBJS)
+	rm -f $(LIB_TARGET) $(AES_TARGET) $(RSA_TARGET)
+
+install: $(AES_TARGET) $(RSA_TARGET)
 	install -d $(DESTDIR)$(BINDIR)
-	install -m 755 $(TARGET) $(DESTDIR)$(BINDIR)/$(TARGET)
-	install -m 755 $(ELE_PKCS11_RSA_TARGET) $(DESTDIR)$(BINDIR)/$(ELE_PKCS11_RSA_TARGET)
+	install -m 755 $(AES_TARGET) $(DESTDIR)$(BINDIR)/$(AES_TARGET)
+	install -m 755 $(RSA_TARGET) $(DESTDIR)$(BINDIR)/$(RSA_TARGET)

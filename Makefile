@@ -56,6 +56,9 @@ AR ?= ar
 # Application name
 TARGET := fce_aes_app
 
+# ELE PKCS#11 RSA Sign/Verify target
+ELE_PKCS11_RSA_TARGET := ele_pkcs11_rsa_app
+
 # Static library (subset of objects for external consumers)
 LIB_TARGET := libfce_aes.a
 LIB_OBJS  := src/fce_aes_session.o src/aes_openssl.o src/fce_aes_format.o src/fce_aes.o
@@ -71,6 +74,11 @@ SRCS := src/fce_aes_app.c \
 	src/fce_aes_selftest.c
 OBJS := $(SRCS:.c=.o)
 
+# ELE PKCS#11 RSA source files (separate from the main AES app)
+ELE_PKCS11_RSA_SRCS := src/ele_pkcs11_rsa.c \
+                        src/ele_pkcs11_rsa_app.c
+ELE_PKCS11_RSA_OBJS := $(ELE_PKCS11_RSA_SRCS:.c=.o)
+
 # ------------------------------------------------------------------
 # Compiler and linker flags
 # ------------------------------------------------------------------
@@ -79,8 +87,13 @@ OBJS := $(SRCS:.c=.o)
 CFLAGS := -O2 -Wall -Werror \
 	  -Iinclude
 
+# ELE PKCS#11 RSA object flags — no PRIME/OpenSSL dependency.
+ELE_PKCS11_RSA_CFLAGS := -O0 -g -Wall \
+                          -Iinclude
+
 # Base link: OpenSSL crypto library (always required).
-LDLIBS  := -lcrypto
+LDLIBS  := -lcrypto -ldl
+ELE_PKCS11_RSA_LDLIBS := -ldl
 LDFLAGS :=
 
 # PRIME-specific: include paths, library, and compile-time define.
@@ -97,6 +110,7 @@ endif
 # -L$(ELE_DIR) above is a host path unaffected by --sysroot.
 ifneq ($(SDKTARGETSYSROOT),)
 CFLAGS  += --sysroot=$(SDKTARGETSYSROOT)
+ELE_PKCS11_RSA_CFLAGS += --sysroot=$(SDKTARGETSYSROOT)
 LDFLAGS += --sysroot=$(SDKTARGETSYSROOT)
 endif
 
@@ -106,7 +120,7 @@ endif
 
 .PHONY: all clean install
 
-all: $(TARGET) $(LIB_TARGET)
+all: $(TARGET) $(LIB_TARGET) $(ELE_PKCS11_RSA_TARGET)
 
 $(TARGET): $(OBJS)
 	@echo "Linking $@ ..."
@@ -116,13 +130,22 @@ $(LIB_TARGET): $(LIB_OBJS)
 	@echo "Creating $@ ..."
 	@$(AR) rcs $@ $^
 
+$(ELE_PKCS11_RSA_TARGET): $(ELE_PKCS11_RSA_OBJS) src/fce_aes_io.o
+	@echo "Linking $@ ..."
+	@$(CC) $(ELE_PKCS11_RSA_CFLAGS) $(LDFLAGS) -o $@ $^ $(ELE_PKCS11_RSA_LDLIBS)
+
+# ELE PKCS#11 RSA objects use their own CFLAGS (no PRIME/OpenSSL).
+src/ele_pkcs11_rsa.o src/ele_pkcs11_rsa_app.o: CFLAGS := $(ELE_PKCS11_RSA_CFLAGS)
+
 src/%.o: src/%.c
 	@echo "CC $@ ..."
 	@$(CC) $(CFLAGS) -c -o $@ $<
 
 clean:
-	rm -f $(OBJS) $(TARGET) $(LIB_TARGET)
+	rm -f $(OBJS) $(TARGET) $(LIB_TARGET) \
+	      $(ELE_PKCS11_RSA_OBJS) $(ELE_PKCS11_RSA_TARGET)
 
-install: $(TARGET)
+install: $(TARGET) $(ELE_PKCS11_RSA_TARGET)
 	install -d $(DESTDIR)$(BINDIR)
 	install -m 755 $(TARGET) $(DESTDIR)$(BINDIR)/$(TARGET)
+	install -m 755 $(ELE_PKCS11_RSA_TARGET) $(DESTDIR)$(BINDIR)/$(ELE_PKCS11_RSA_TARGET)

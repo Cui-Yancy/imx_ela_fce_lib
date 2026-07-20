@@ -20,7 +20,15 @@
  * Error convention: system errors return negative errno values;
  * PKCS#11 CKR errors are stored in the context and reported via
  * ele_pkcs11_rsa_strerror().
+ *
+ * Streaming threshold: data larger than this is signed/verified via
+ * multi-part operations (C_SignUpdate/C_SignFinal or
+ * C_VerifyUpdate/C_VerifyFinal) instead of one-shot C_Sign/C_Verify.
+ * This avoids ELE firmware message-size limits; the streaming path
+ * hashes incrementally in software and only passes the digest to HW.
+ * Matches pkcs11-tool's internal buffer size (1025 B).
  */
+#define ELE_PKCS11_RSA_STREAM_THRESHOLD  1024
 
 #include "imx_rsa.h"
 #include <pkcs11.h>
@@ -508,55 +516,130 @@ int ele_pkcs11_rsa_sign(struct ele_pkcs11_rsa *ctx,
     }
     DBG("C_SignInit OK\n");
 
-    /* ---- Two-call C_Sign with the raw message data.
+    /* ---- Sign the data.
+     *
      *   CKM_SHA256_RSA_PKCS_PSS is a DigestSign mechanism — the token
      *   hashes the data with SHA-256 internally, then applies RSA-PSS.
-     *   First call with NULL output gets the signature length.
-     *   Second call with allocated buffer produces the actual signature.
+     *
+     *   For small data (≤ STREAM_THRESHOLD) use one-shot C_Sign with the
+     *   traditional two-call pattern (NULL output → get length → allocate
+     *   buffer → produce signature).
+     *
+     *   For large data (> STREAM_THRESHOLD) use the multi-part streaming
+     *   path (C_SignUpdate + C_SignFinal) to avoid ELE firmware message-
+     *   size limits.  The streaming path hashes incrementally in software
+     *   and only passes the digest to the hardware.
      */
-    ck_sig_len = 0;
-    DBG("C_Sign (first call, length query) data_len=%zu ...\n", data_len);
-    rv = ctx->funcs->C_Sign(ctx->session,
-                             (CK_BYTE_PTR)data, (CK_ULONG)data_len,
-                             NULL, &ck_sig_len);
-    if (rv != CKR_OK) {
-        DBG_ERR("C_Sign (length query) failed: CKR=0x%lx (%s)\n",
-                (unsigned long)rv, ckr_to_string(rv));
-        ctx->last_ckr = rv;
-        return -EIO;
-    }
-    DBG("C_Sign (length query): sig_len=%lu\n", (unsigned long)ck_sig_len);
+    if (data_len <= ELE_PKCS11_RSA_STREAM_THRESHOLD) {
+        /* ---- One-shot: two-call C_Sign ---- */
+        ck_sig_len = 0;
+        DBG("C_Sign (length query) data_len=%zu ...\n", data_len);
+        rv = ctx->funcs->C_Sign(ctx->session,
+                                 (CK_BYTE_PTR)data, (CK_ULONG)data_len,
+                                 NULL, &ck_sig_len);
+        if (rv != CKR_OK) {
+            DBG_ERR("C_Sign (length query) failed: CKR=0x%lx (%s)\n",
+                    (unsigned long)rv, ckr_to_string(rv));
+            ctx->last_ckr = rv;
+            return -EIO;
+        }
+        DBG("C_Sign (length query): sig_len=%lu\n", (unsigned long)ck_sig_len);
 
-    /* Sanity check. */
-    if (ck_sig_len == 0 || ck_sig_len > ELE_PKCS11_RSA_MAX_SIGNATURE_SIZE) {
-        DBG_ERR("C_Sign returned invalid signature length %lu\n",
-                (unsigned long)ck_sig_len);
-        return -EIO;
-    }
+        if (ck_sig_len == 0 ||
+            ck_sig_len > ELE_PKCS11_RSA_MAX_SIGNATURE_SIZE) {
+            DBG_ERR("C_Sign returned invalid signature length %lu\n",
+                    (unsigned long)ck_sig_len);
+            return -EIO;
+        }
 
-    /* Allocate output buffer. */
-    *sig = (uint8_t *)malloc((size_t)ck_sig_len);
-    if (!*sig) {
-        DBG_ERR("malloc(%lu) failed\n", (unsigned long)ck_sig_len);
-        return -ENOMEM;
-    }
+        *sig = (uint8_t *)malloc((size_t)ck_sig_len);
+        if (!*sig) {
+            DBG_ERR("malloc(%lu) failed\n", (unsigned long)ck_sig_len);
+            return -ENOMEM;
+        }
 
-    /* Second call: produce the actual signature. */
-    DBG("C_Sign (second call, actual signature) ...\n");
-    rv = ctx->funcs->C_Sign(ctx->session,
-                             (CK_BYTE_PTR)data, (CK_ULONG)data_len,
-                             (CK_BYTE_PTR)*sig, &ck_sig_len);
-    if (rv != CKR_OK) {
-        DBG_ERR("C_Sign (actual signature) failed: CKR=0x%lx (%s)\n",
-                (unsigned long)rv, ckr_to_string(rv));
-        ctx->last_ckr = rv;
-        free(*sig);
-        *sig = NULL;
-        return -EIO;
-    }
-    DBG("C_Sign OK, sig_len=%lu\n", (unsigned long)ck_sig_len);
+        DBG("C_Sign (actual signature) ...\n");
+        rv = ctx->funcs->C_Sign(ctx->session,
+                                 (CK_BYTE_PTR)data, (CK_ULONG)data_len,
+                                 (CK_BYTE_PTR)*sig, &ck_sig_len);
+        if (rv != CKR_OK) {
+            DBG_ERR("C_Sign (actual signature) failed: CKR=0x%lx (%s)\n",
+                    (unsigned long)rv, ckr_to_string(rv));
+            ctx->last_ckr = rv;
+            free(*sig);
+            *sig = NULL;
+            return -EIO;
+        }
+        DBG("C_Sign OK, sig_len=%lu\n", (unsigned long)ck_sig_len);
 
-    *sig_len = (size_t)ck_sig_len;
+        *sig_len = (size_t)ck_sig_len;
+    } else {
+        /* ---- Streaming: C_SignUpdate loop + C_SignFinal ---- */
+        size_t offset;
+        size_t chunk;
+
+        DBG("Streaming sign via C_SignUpdate/C_SignFinal (data_len=%zu)\n",
+            data_len);
+
+        for (offset = 0; offset < data_len; offset += chunk) {
+            chunk = data_len - offset;
+            if (chunk > ELE_PKCS11_RSA_STREAM_THRESHOLD)
+                chunk = ELE_PKCS11_RSA_STREAM_THRESHOLD;
+
+            DBG("C_SignUpdate offset=%zu, chunk=%zu ...\n", offset, chunk);
+            rv = ctx->funcs->C_SignUpdate(
+                ctx->session,
+                (CK_BYTE_PTR)(data + offset), (CK_ULONG)chunk);
+            if (rv != CKR_OK) {
+                DBG_ERR("C_SignUpdate failed at offset=%zu: "
+                        "CKR=0x%lx (%s)\n",
+                        offset, (unsigned long)rv, ckr_to_string(rv));
+                ctx->last_ckr = rv;
+                return -EIO;
+            }
+        }
+
+        /* Get signature length (NULL output buffer). */
+        ck_sig_len = 0;
+        DBG("C_SignFinal (length query) ...\n");
+        rv = ctx->funcs->C_SignFinal(ctx->session, NULL, &ck_sig_len);
+        if (rv != CKR_OK) {
+            DBG_ERR("C_SignFinal (length query) failed: CKR=0x%lx (%s)\n",
+                    (unsigned long)rv, ckr_to_string(rv));
+            ctx->last_ckr = rv;
+            return -EIO;
+        }
+        DBG("C_SignFinal (length query): sig_len=%lu\n",
+            (unsigned long)ck_sig_len);
+
+        if (ck_sig_len == 0 ||
+            ck_sig_len > ELE_PKCS11_RSA_MAX_SIGNATURE_SIZE) {
+            DBG_ERR("C_SignFinal returned invalid signature length %lu\n",
+                    (unsigned long)ck_sig_len);
+            return -EIO;
+        }
+
+        *sig = (uint8_t *)malloc((size_t)ck_sig_len);
+        if (!*sig) {
+            DBG_ERR("malloc(%lu) failed\n", (unsigned long)ck_sig_len);
+            return -ENOMEM;
+        }
+
+        DBG("C_SignFinal (actual signature) ...\n");
+        rv = ctx->funcs->C_SignFinal(ctx->session,
+                                      (CK_BYTE_PTR)*sig, &ck_sig_len);
+        if (rv != CKR_OK) {
+            DBG_ERR("C_SignFinal failed: CKR=0x%lx (%s)\n",
+                    (unsigned long)rv, ckr_to_string(rv));
+            ctx->last_ckr = rv;
+            free(*sig);
+            *sig = NULL;
+            return -EIO;
+        }
+        DBG("C_SignFinal OK, sig_len=%lu\n", (unsigned long)ck_sig_len);
+
+        *sig_len = (size_t)ck_sig_len;
+    }
 
     return 0;
 }
@@ -607,18 +690,55 @@ int ele_pkcs11_rsa_verify(struct ele_pkcs11_rsa *ctx,
     }
     DBG("C_VerifyInit OK\n");
 
-    /* ---- C_Verify with raw message data (single call).
+    /* ---- C_Verify with raw message data.
+     *
      *   CKM_SHA256_RSA_PKCS_PSS is a DigestVerify mechanism — the token
      *   hashes the data with SHA-256 internally, then verifies the RSA-PSS
-     *   signature.  Unlike C_Sign, no two-call length query is needed since
-     *   the signature length is already known.
+     *   signature.
+     *
+     *   For small data (≤ STREAM_THRESHOLD) use one-shot C_Verify.
+     *   For large data (> STREAM_THRESHOLD) use multi-part streaming
+     *   (C_VerifyUpdate loop + C_VerifyFinal) to avoid ELE firmware
+     *   message-size limits.
      */
-    DBG("C_Verify data_len=%zu, sig_len=%zu ...\n", data_len, sig_len);
-    rv = ctx->funcs->C_Verify(ctx->session,
-                               (CK_BYTE_PTR)data, (CK_ULONG)data_len,
-                               (CK_BYTE_PTR)sig, (CK_ULONG)sig_len);
+    if (data_len <= ELE_PKCS11_RSA_STREAM_THRESHOLD) {
+        DBG("C_Verify data_len=%zu, sig_len=%zu ...\n", data_len, sig_len);
+        rv = ctx->funcs->C_Verify(ctx->session,
+                                   (CK_BYTE_PTR)data, (CK_ULONG)data_len,
+                                   (CK_BYTE_PTR)sig, (CK_ULONG)sig_len);
+    } else {
+        size_t offset;
+        size_t chunk;
+
+        DBG("Streaming verify via C_VerifyUpdate/C_VerifyFinal "
+            "(data_len=%zu)\n", data_len);
+
+        for (offset = 0; offset < data_len; offset += chunk) {
+            chunk = data_len - offset;
+            if (chunk > ELE_PKCS11_RSA_STREAM_THRESHOLD)
+                chunk = ELE_PKCS11_RSA_STREAM_THRESHOLD;
+
+            DBG("C_VerifyUpdate offset=%zu, chunk=%zu ...\n", offset, chunk);
+            rv = ctx->funcs->C_VerifyUpdate(
+                ctx->session,
+                (CK_BYTE_PTR)(data + offset), (CK_ULONG)chunk);
+            if (rv != CKR_OK) {
+                DBG_ERR("C_VerifyUpdate failed at offset=%zu: "
+                        "CKR=0x%lx (%s)\n",
+                        offset, (unsigned long)rv, ckr_to_string(rv));
+                ctx->last_ckr = rv;
+                return -EIO;
+            }
+        }
+
+        DBG("C_VerifyFinal ...\n");
+        rv = ctx->funcs->C_VerifyFinal(ctx->session,
+                                        (CK_BYTE_PTR)sig,
+                                        (CK_ULONG)sig_len);
+    }
+
     if (rv != CKR_OK) {
-        DBG_ERR("C_Verify failed: CKR=0x%lx (%s)\n",
+        DBG_ERR("C_Verify/C_VerifyFinal failed: CKR=0x%lx (%s)\n",
                 (unsigned long)rv, ckr_to_string(rv));
         ctx->last_ckr = rv;
         if (rv == CKR_SIGNATURE_INVALID)

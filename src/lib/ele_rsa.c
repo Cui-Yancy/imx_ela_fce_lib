@@ -326,9 +326,11 @@ static int pkcs11_find_key(struct ele_pkcs11_rsa *ctx,
 
     DBG("C_FindObjectsInit (class=%lu + CKK_RSA + CKA_ID=",
         (unsigned long)obj_class);
-    for (i = 0; i < key_id_len; i++)
-        fprintf(stderr, "%02x", key_id[i]);
-    fprintf(stderr, ") ...\n");
+    if (ELE_PKCS11_RSA_DEBUG) {
+        for (i = 0; i < key_id_len; i++)
+            fprintf(stderr, "%02x", key_id[i]);
+        fprintf(stderr, ") ...\n");
+    }
 
     rv = ctx->funcs->C_FindObjectsInit(ctx->session, tmpl, (CK_ULONG)tmpl_count);
     if (rv != CKR_OK) {
